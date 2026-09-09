@@ -89,7 +89,7 @@ class _PatternSearchScreenState extends State<PatternSearchScreen> {
                 children: [
                   Text('Настройки', style: AppTheme.title()),
                   const SizedBox(height: 16),
-                  SymbolAutocompleteField(
+                  SymbolDropdownField(
                     label: 'Символ',
                     value: _symbol,
                     symbols: _symbols,

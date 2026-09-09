@@ -1,6 +1,135 @@
 import 'package:flutter/material.dart';
 import '../app_theme.dart';
 
+/// Выпадающий список монет с поиском для одиночного выбора.
+/// Открывает диалог с фильтром, как в мульти-поиске, но без галочек.
+class SymbolDropdownField extends StatefulWidget {
+  final String label;
+  final String value;
+  final List<String> symbols;
+  final ValueChanged<String> onSelected;
+
+  const SymbolDropdownField({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.symbols,
+    required this.onSelected,
+  });
+
+  @override
+  State<SymbolDropdownField> createState() => _SymbolDropdownFieldState();
+}
+
+class _SymbolDropdownFieldState extends State<SymbolDropdownField> {
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: _openDialog,
+      borderRadius: BorderRadius.circular(10),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: widget.label,
+          hintText: 'Нажмите, чтобы выбрать',
+          suffixIcon: widget.symbols.isNotEmpty
+              ? const Icon(Icons.arrow_drop_down, color: AppTheme.muted)
+              : null,
+        ),
+        child: Text(
+          widget.value.isEmpty ? 'Выберите монету' : widget.value,
+          style: AppTheme.body(),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openDialog() async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => _SingleSelectDialog(
+        all: widget.symbols,
+        selected: widget.value,
+      ),
+    );
+    if (result != null && result.isNotEmpty) {
+      widget.onSelected(result.toUpperCase());
+    }
+  }
+}
+
+class _SingleSelectDialog extends StatefulWidget {
+  final List<String> all;
+  final String selected;
+
+  const _SingleSelectDialog({required this.all, required this.selected});
+
+  @override
+  State<_SingleSelectDialog> createState() => __SingleSelectDialogState();
+}
+
+class __SingleSelectDialogState extends State<_SingleSelectDialog> {
+  final _queryCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _queryCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = _query.isEmpty
+        ? widget.all
+        : widget.all.where((s) => s.toUpperCase().contains(_query.toUpperCase())).toList();
+
+    return AlertDialog(
+      backgroundColor: AppTheme.card,
+      title: Text('Выбор монеты', style: AppTheme.title()),
+      content: SizedBox(
+        width: double.maxFinite,
+        height: 420,
+        child: Column(
+          children: [
+            TextField(
+              controller: _queryCtrl,
+              onChanged: (s) => setState(() => _query = s),
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(
+                hintText: 'Поиск...',
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: ListView.builder(
+                itemCount: items.length,
+                itemBuilder: (ctx, i) {
+                  final s = items[i];
+                  final isSelected = widget.selected.toUpperCase() == s.toUpperCase();
+                  return ListTile(
+                    dense: true,
+                    title: Text(s, style: AppTheme.body()),
+                    trailing: isSelected
+                        ? const Icon(Icons.check, color: AppTheme.accent, size: 20)
+                        : null,
+                    onTap: () => Navigator.of(context).pop(s),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Отмена'),
+        ),
+      ],
+    );
+  }
+}
+
 /// Поле ввода символа с автодополнением: можно выбрать из списка
 /// или ввести вручную. Подходит для одиночного выбора.
 class SymbolAutocompleteField extends StatefulWidget {
