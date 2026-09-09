@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../app_theme.dart';
 import '../core/core_call.dart';
 
@@ -40,7 +41,54 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _init() async {
     await Future.delayed(const Duration(milliseconds: 800));
     await _loadVersion();
+    await _checkUpdate();
     await _checkAuth();
+  }
+
+  Future<void> _checkUpdate() async {
+    setState(() => _status = 'Проверка обновлений');
+    try {
+      final res = await coreCall('check_update');
+      if (res['ok'] == true && res['has_update'] == true && res['download_url'] != null) {
+        final newVersion = res['new_version']?.toString() ?? 'новая';
+        if (!mounted) return;
+        final go = await _showUpdateDialog(newVersion, res['download_url'].toString());
+        if (go == true) {
+          final url = Uri.parse(res['download_url'].toString());
+          if (await canLaunchUrl(url)) {
+            await launchUrl(url, mode: LaunchMode.externalApplication);
+          }
+        }
+      }
+    } catch (e) {
+      // Если не удалось проверить — не блокируем вход.
+      print('update check error: $e');
+    }
+  }
+
+  Future<bool?> _showUpdateDialog(String version, String url) {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.card,
+        title: Text('Доступна новая версия', style: AppTheme.title()),
+        content: Text(
+          'Версия $version уже выложена.\n\nНажмите "Скачать", чтобы открыть страницу загрузки в браузере и установить обновление.',
+          style: AppTheme.body(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Позже'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Скачать'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadVersion() async {

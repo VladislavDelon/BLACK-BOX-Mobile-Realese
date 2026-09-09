@@ -8,7 +8,7 @@ import os
 def set_app_dir(data_dir):
     global APP_DIR, REGISTRATION_FILE, USERS_DIR, USERS_FILE, KEYS_DIR
     global LOCAL_KEYS_FILE, LOCAL_DEACTIVATED_FILE, LAUNCHER_LANG_FILE
-    global UPDATE_TMP_DIR, _TOKEN_FILE
+    global UPDATE_TMP_DIR, _TOKEN_FILE, GITHUB_TOKEN
     APP_DIR = data_dir
     os.makedirs(APP_DIR, exist_ok=True)
     REGISTRATION_FILE = os.path.join(APP_DIR, "registration.json")
@@ -22,6 +22,13 @@ def set_app_dir(data_dir):
     _TOKEN_FILE = os.path.join(APP_DIR, "token.txt")
     os.makedirs(USERS_DIR, exist_ok=True)
     os.makedirs(KEYS_DIR, exist_ok=True)
+    # Восстанавливаем ранее сохранённый GitHub-токен.
+    if not GITHUB_TOKEN and os.path.exists(_TOKEN_FILE):
+        try:
+            with open(_TOKEN_FILE, "r", encoding="utf-8") as f:
+                GITHUB_TOKEN = f.read().strip()
+        except Exception:
+            pass
 
 
 APP_DIR = os.environ.get("FILES_DIR", os.path.dirname(__file__))
