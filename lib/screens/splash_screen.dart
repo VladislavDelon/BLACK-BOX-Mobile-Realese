@@ -48,62 +48,104 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _checkUpdate() async {
     setState(() => _status = 'Проверка обновлений');
     try {
-      final res = await coreCall('check_update');
+      final res = await coreCallTimeout('check_update', timeout: const Duration(seconds: 7));
+      final current = _version;
+
       if (res['ok'] == true && res['has_update'] == true && res['download_url'] != null) {
         final newVersion = res['new_version']?.toString() ?? 'новая';
+        setState(() {
+          _version = '$current → v$newVersion';
+          _status = 'Доступна $newVersion';
+        });
         if (!mounted) return;
-        final go = await _showUpdateDialog(newVersion, res['download_url'].toString());
-        if (go == true) {
-          final url = Uri.parse(res['download_url'].toString());
-          if (await canLaunchUrl(url)) {
-            await launchUrl(url, mode: LaunchMode.externalApplication);
-          }
-        }
+        await _handleUpdate(newVersion, res['download_url'].toString());
+      } else if (res['ok'] == true) {
+        setState(() {
+          _version = '$current (актуальная)';
+          _status = 'Актуальная';
+        });
+        await Future.delayed(const Duration(seconds: 1));
+      } else {
+        setState(() {
+          _version = '$current';
+          _status = 'Не удалось проверить обновления';
+        });
+        await Future.delayed(const Duration(seconds: 1));
       }
     } catch (e) {
-      // Если не удалось проверить — не блокируем вход.
-      print('update check error: $e');
+      setState(() => _status = 'Ошибка проверки обновлений');
+      await Future.delayed(const Duration(seconds: 1));
     }
   }
 
-  Future<bool?> _showUpdateDialog(String version, String url) {
+  Future<void> _handleUpdate(String newVersion, String url) async {
+    if (!mounted) return;
+    final go = await _showUpdateDialog(newVersion, url);
+    if (go == true && mounted) {
+      setState(() => _status = 'Открытие загрузки');
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+      setState(() => _status = 'Загрузка началась');
+      await Future.delayed(const Duration(seconds: 2));
+    }
+  }
+
+  Future<bool> _showUpdateDialog(String version, String url) {
+    bool autoConfirmed = false;
     return showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.card,
-        title: Text('Доступна новая версия', style: AppTheme.title()),
-        content: Text(
-          'Версия $version уже выложена.\n\nНажмите "Скачать", чтобы открыть страницу загрузки в браузере и установить обновление.',
-          style: AppTheme.body(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Позже'),
+      builder: (ctx) {
+        // Авто-скачивание через 3 секунды, если пользователь не нажал кнопку.
+        Future.delayed(const Duration(seconds: 3), () {
+          if (ctx.mounted && !autoConfirmed) {
+            autoConfirmed = true;
+            Navigator.of(ctx).pop(true);
+          }
+        });
+        return AlertDialog(
+          backgroundColor: AppTheme.card,
+          title: Text('Доступна новая версия', style: AppTheme.title()),
+          content: Text(
+            'Версия $version уже выложена.\n\nСкачивание начнётся автоматически через 3 секунды.',
+            style: AppTheme.body(),
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Скачать'),
-          ),
-        ],
-      ),
-    );
+          actions: [
+            TextButton(
+              onPressed: () {
+                autoConfirmed = true;
+                Navigator.of(ctx).pop(false);
+              },
+              child: const Text('Позже'),
+            ),
+            FilledButton(
+              onPressed: () {
+                autoConfirmed = true;
+                Navigator.of(ctx).pop(true);
+              },
+              child: const Text('Скачать сейчас'),
+            ),
+          ],
+        );
+      },
+    ).then((v) => v == true || autoConfirmed);
   }
 
   Future<void> _loadVersion() async {
     try {
-      final res = await coreCall('get_version');
-      setState(() => _version = res['version']?.toString() ?? '1.0.0');
+      final res = await coreCallTimeout('get_version', timeout: const Duration(seconds: 3));
+      setState(() => _version = 'v${res['version']?.toString() ?? '1.0.0'}');
     } catch (e) {
-      setState(() => _version = '1.0.0');
+      setState(() => _version = 'v1.0.0');
     }
   }
 
   Future<void> _checkAuth() async {
     setState(() => _status = 'Проверка подключения');
     try {
-      final res = await coreCall('get_auth_state');
+      final res = await coreCallTimeout('get_auth_state', timeout: const Duration(seconds: 5));
       final registered = res['registered'] == true;
       if (!mounted) return;
       if (registered) {
@@ -141,7 +183,7 @@ class _SplashScreenState extends State<SplashScreen> {
             const SizedBox(height: 16),
             if (_version.isNotEmpty)
               Text(
-                'v$_version',
+                _version,
                 style: AppTheme.small(),
               ),
           ],

@@ -653,7 +653,7 @@ def check_for_update(current_version=None):
         headers = {"Accept": "application/json"}
         r = _request_with_fallback(
             "get", VERSION_URL, headers=headers,
-            timeout=15, allow_redirects=True, ok_codes=(200,),
+            timeout=5, allow_redirects=True, ok_codes=(200,),
         )
         if not r:
             return False, None, None

@@ -13,3 +13,17 @@ Future<Map<String, dynamic>> coreCall(String method,
       '{"ok": false, "error": "no result"}';
   return jsonDecode(out) as Map<String, dynamic>;
 }
+
+/// Вызов метода Python-ядра с таймаутом. Если за timeout не ответит,
+/// возвращает {'ok': false, 'error': 'timeout'}.
+Future<Map<String, dynamic>> coreCallTimeout(String method,
+    {Map<String, dynamic> args = const {},
+    Duration timeout = const Duration(seconds: 6)}) async {
+  final result = await Future.any<String>([
+    _channel
+        .invokeMethod<String>(method, {'argsJson': jsonEncode(args)})
+        .then((s) => s ?? '{"ok": false, "error": "no result"}'),
+    Future.delayed(timeout, () => '{"ok": false, "error": "timeout"}'),
+  ]);
+  return jsonDecode(result) as Map<String, dynamic>;
+}
