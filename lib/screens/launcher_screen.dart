@@ -72,7 +72,7 @@ class _LauncherScreenState extends State<LauncherScreen> {
   void _openModule(String id) {
     final routes = {
       'pattern': '/pattern',
-      'multi_pattern': null,
+      'multi_pattern': '/multi_pattern',
       'multi_trading': null,
       'asset_prices': null,
     };

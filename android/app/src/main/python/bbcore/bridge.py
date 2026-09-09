@@ -237,6 +237,24 @@ def search_pattern(exchange: str, symbol: str, interval: str, pattern_length: in
     )
 
 
+def multi_pattern_search(symbols, exchange: str, interval: str, pattern_length: int = 60,
+                         forecast_horizon: int = 5, top_n: int = 5,
+                         min_signal_threshold: float = 0.0,
+                         api_key: str = "", api_secret: str = "", testnet: bool = False,
+                         skip_neutral: bool = True):
+    return analysis.multi_pattern_search(
+        symbols, exchange, interval,
+        pattern_length=pattern_length,
+        forecast_horizon=forecast_horizon,
+        top_n=top_n,
+        min_signal_threshold=min_signal_threshold,
+        api_key=api_key,
+        api_secret=api_secret,
+        testnet=testnet,
+        skip_neutral=skip_neutral,
+    )
+
+
 # ----------------------------------------------------------
 # JSON-диспетчер для MethodChannel: одна точка входа из Kotlin.
 # ----------------------------------------------------------
@@ -261,6 +279,7 @@ _METHODS = {
     "set_github_token": set_github_token,
     "get_symbols": get_symbols,
     "search_pattern": search_pattern,
+    "multi_pattern_search": multi_pattern_search,
 }
 
 

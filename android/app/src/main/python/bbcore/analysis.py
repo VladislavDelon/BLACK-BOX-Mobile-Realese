@@ -149,3 +149,49 @@ def search_pattern(exchange, symbol, interval, pattern_length=60,
         "matches": top,
         "generated_at": time.time(),
     }
+
+
+def multi_pattern_search(symbols, exchange, interval, pattern_length=60,
+                         forecast_horizon=5, top_n=5, min_signal_threshold=0.0,
+                         api_key="", api_secret="", testnet=False,
+                         max_workers=3, skip_neutral=True):
+    """
+    Запускает поиск по паттернам сразу по нескольким монетам.
+    Возвращает таблицу с лучшими сигналами.
+    symbols — список строк, например ["BTCUSDT", "ETHUSDT"].
+    """
+    results = []
+    errors = []
+    if isinstance(symbols, str):
+        symbols = [s.strip() for s in symbols.split(",") if s.strip()]
+    for symbol in symbols:
+        try:
+            res = search_pattern(
+                exchange, symbol, interval,
+                pattern_length=pattern_length,
+                forecast_horizon=forecast_horizon,
+                top_n=top_n,
+                min_signal_threshold=min_signal_threshold,
+                api_key=api_key,
+                api_secret=api_secret,
+                testnet=testnet,
+            )
+            if res.get("ok"):
+                if not (skip_neutral and res.get("signal") == "NEUTRAL"):
+                    results.append(res)
+            else:
+                errors.append({"symbol": symbol, "error": res.get("error")})
+        except Exception as e:
+            errors.append({"symbol": symbol, "error": str(e)})
+
+    # Сортируем: сначала сила, затем потенциальная доходность.
+    results.sort(
+        key=lambda r: (r.get("strength", 0), abs(r.get("forecast_return_pct", 0))),
+        reverse=True,
+    )
+    return {
+        "ok": True,
+        "count": len(results),
+        "results": results,
+        "errors": errors,
+    }
