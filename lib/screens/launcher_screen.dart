@@ -73,7 +73,7 @@ class _LauncherScreenState extends State<LauncherScreen> {
     final routes = {
       'pattern': '/pattern',
       'multi_pattern': '/multi_pattern',
-      'multi_trading': null,
+      'multi_trading': '/multi_trading',
       'asset_prices': null,
     };
     final route = routes[id];

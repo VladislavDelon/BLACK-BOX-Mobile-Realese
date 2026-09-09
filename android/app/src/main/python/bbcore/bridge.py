@@ -8,6 +8,7 @@ from bbcore import exchange_api
 from bbcore import auth
 from bbcore import config
 from bbcore import analysis
+from bbcore import auto_trading
 
 # Папка для локальных данных задаётся из Kotlin (filesDir приложения)
 _DATA_DIR = None
@@ -255,6 +256,36 @@ def multi_pattern_search(symbols, exchange: str, interval: str, pattern_length: 
     )
 
 
+def run_trading_cycle(symbols, exchange: str, api_key: str, api_secret: str,
+                      interval: str = "15m", pattern_length: int = 60,
+                      forecast_horizon: int = 5, top_n: int = 5,
+                      min_signal_threshold: float = 0.0,
+                      trade_threshold: float = 1.5,
+                      position_size: float = 100.0, leverage: int = 10,
+                      amount_mode: str = "fixed",
+                      tp_mode: str = "signal", tp_pct: float = 0.0,
+                      sl_mode: str = "signal", sl_pct: float = 0.0,
+                      testnet: bool = False, max_trades: int = None):
+    return auto_trading.run_trading_cycle(
+        symbols, exchange, api_key, api_secret,
+        interval=interval,
+        pattern_length=pattern_length,
+        forecast_horizon=forecast_horizon,
+        top_n=top_n,
+        min_signal_threshold=min_signal_threshold,
+        trade_threshold=trade_threshold,
+        position_size=position_size,
+        leverage=leverage,
+        amount_mode=amount_mode,
+        tp_mode=tp_mode,
+        tp_pct=tp_pct,
+        sl_mode=sl_mode,
+        sl_pct=sl_pct,
+        testnet=testnet,
+        max_trades=max_trades,
+    )
+
+
 # ----------------------------------------------------------
 # JSON-диспетчер для MethodChannel: одна точка входа из Kotlin.
 # ----------------------------------------------------------
@@ -280,6 +311,7 @@ _METHODS = {
     "get_symbols": get_symbols,
     "search_pattern": search_pattern,
     "multi_pattern_search": multi_pattern_search,
+    "run_trading_cycle": run_trading_cycle,
 }
 
 
