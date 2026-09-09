@@ -7,6 +7,7 @@ import os
 from bbcore import exchange_api
 from bbcore import auth
 from bbcore import config
+from bbcore import analysis
 
 # Папка для локальных данных задаётся из Kotlin (filesDir приложения)
 _DATA_DIR = None
@@ -209,6 +210,34 @@ def set_github_token(token: str):
 
 
 # ----------------------------------------------------------
+# Анализ / поиск по паттернам
+# ----------------------------------------------------------
+
+def get_symbols(exchange: str, api_key: str = "", api_secret: str = "", testnet: bool = False):
+    try:
+        api = exchange_api.get_api(exchange, api_key or "-", api_secret or "-", testnet=testnet)
+        return {"ok": True, "symbols": api.get_usdt_symbols()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def search_pattern(exchange: str, symbol: str, interval: str, pattern_length: int = 60,
+                   forecast_horizon: int = 5, top_n: int = 5,
+                   min_signal_threshold: float = 0.0,
+                   api_key: str = "", api_secret: str = "", testnet: bool = False):
+    return analysis.search_pattern(
+        exchange, symbol, interval,
+        pattern_length=pattern_length,
+        forecast_horizon=forecast_horizon,
+        top_n=top_n,
+        min_signal_threshold=min_signal_threshold,
+        api_key=api_key,
+        api_secret=api_secret,
+        testnet=testnet,
+    )
+
+
+# ----------------------------------------------------------
 # JSON-диспетчер для MethodChannel: одна точка входа из Kotlin.
 # ----------------------------------------------------------
 
@@ -230,6 +259,8 @@ _METHODS = {
     "login": login,
     "logout": logout,
     "set_github_token": set_github_token,
+    "get_symbols": get_symbols,
+    "search_pattern": search_pattern,
 }
 
 

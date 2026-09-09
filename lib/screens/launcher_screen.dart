@@ -70,6 +70,17 @@ class _LauncherScreenState extends State<LauncherScreen> {
   }
 
   void _openModule(String id) {
+    final routes = {
+      'pattern': '/pattern',
+      'multi_pattern': null,
+      'multi_trading': null,
+      'asset_prices': null,
+    };
+    final route = routes[id];
+    if (route != null) {
+      Navigator.pushNamed(context, route);
+      return;
+    }
     final titles = {
       'pattern': 'Поиск по паттернам',
       'multi_pattern': 'Мульти поиск по паттернам',

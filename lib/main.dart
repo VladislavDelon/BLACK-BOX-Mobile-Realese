@@ -4,6 +4,7 @@ import 'screens/splash_screen.dart';
 import 'screens/auth_screen.dart';
 import 'screens/launcher_screen.dart';
 import 'screens/exchange_screen.dart';
+import 'screens/pattern_search_screen.dart';
 
 void main() {
   runApp(const BlackBoxApp());
@@ -24,6 +25,7 @@ class BlackBoxApp extends StatelessWidget {
         '/auth': (_) => const AuthScreen(),
         '/launcher': (_) => const LauncherScreen(),
         '/exchange': (_) => const ExchangeScreen(),
+        '/pattern': (_) => const PatternSearchScreen(),
       },
     );
   }

@@ -124,6 +124,42 @@ class BinanceAPI:
             signed=True,
         )
 
+    def get_klines(self, symbol: str, interval: str, limit: int = 500):
+        """Возвращает свечи как список [time, open, high, low, close, volume]."""
+        r = requests.get(
+            f"{self.base_url}/fapi/v1/klines",
+            params={"symbol": symbol, "interval": interval, "limit": limit},
+            timeout=15,
+        )
+        if r.status_code != 200:
+            raise ExchangeError(f"Binance klines error {r.status_code}: {r.text}")
+        return [
+            [
+                int(c[0]),
+                float(c[1]),
+                float(c[2]),
+                float(c[3]),
+                float(c[4]),
+                float(c[5]),
+            ]
+            for c in r.json()
+        ]
+
+    def get_usdt_symbols(self):
+        """Список USDT-M фьючерсных пар."""
+        try:
+            r = requests.get(
+                f"{self.base_url}/fapi/v1/exchangeInfo", timeout=15
+            )
+            data = r.json()
+            return sorted(
+                s["symbol"]
+                for s in data.get("symbols", [])
+                if s.get("quoteAsset") == "USDT" and s.get("status") == "TRADING"
+            )
+        except Exception as e:
+            raise ExchangeError(f"symbols fetch error: {e}")
+
     def place_market_order(self, symbol: str, side: str, quantity: float) -> dict:
         """side: 'BUY' or 'SELL' (one-way mode). quantity already rounded."""
         return self._post(
@@ -319,6 +355,49 @@ class MEXCAPI:
     def set_leverage(self, symbol: str, leverage: int) -> dict:
         # Плечо задаётся прямо в ордере (order/create)
         return {}
+
+    def get_klines(self, symbol: str, interval: str, limit: int = 500):
+        """Возвращает свечи MEXC futures [time, open, high, low, close, volume]."""
+        mexc = self._symbol(symbol)
+        interval_map = {
+            "1m": "Min1", "3m": "Min3", "5m": "Min5", "15m": "Min15",
+            "30m": "Min30", "1h": "Min60", "2h": "Min120", "4h": "Min240",
+            "1d": "Day1", "1w": "Week1",
+        }
+        mexc_interval = interval_map.get(interval, interval)
+        r = requests.get(
+            f"{self.base_url}/api/v1/contract/kline",
+            params={"symbol": mexc, "interval": mexc_interval},
+            timeout=15,
+        )
+        data = self._handle(r)
+        rows = data.get("data", {}).get("time", []) if isinstance(data, dict) else []
+        if not rows:
+            return []
+        rows = rows[-limit:] if len(rows) > limit else rows
+        out = []
+        for t, row in rows:
+            # row: [open, high, low, close, vol?, ...]
+            out.append([
+                int(t), float(row[0]), float(row[1]), float(row[2]),
+                float(row[3]), float(row[4]) if len(row) > 4 else 0.0,
+            ])
+        return out
+
+    def get_usdt_symbols(self):
+        try:
+            r = requests.get(
+                f"{self.base_url}/api/v1/contract/detail", timeout=15
+            )
+            data = r.json()
+            symbols = []
+            for item in data.get("data", []):
+                s = item.get("symbol", "")
+                if "_USDT" in s:
+                    symbols.append(s.replace("_", ""))
+            return sorted(symbols)
+        except Exception as e:
+            raise ExchangeError(f"MEXC symbols error: {e}")
 
     def _last_price(self, symbol: str) -> float:
         try:
