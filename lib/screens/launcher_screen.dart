@@ -104,7 +104,7 @@ class _LauncherScreenState extends State<LauncherScreen> {
 
   Future<void> _checkUpdate() async {
     try {
-      final res = await coreCall('check_update');
+      final res = await coreCallTimeout('check_update', timeout: const Duration(seconds: 10));
       if (res['has_update'] == true) {
         if (mounted) {
           showDialog(

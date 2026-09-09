@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../app_theme.dart';
@@ -11,22 +12,40 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
   String _version = '';
   String _status = 'Загрузка';
   String _dots = '';
   Timer? _dotTimer;
 
+  late final AnimationController _logoController;
+  late final Animation<double> _fadeAnimation;
+  late final Animation<double> _scaleAnimation;
+
   @override
   void initState() {
     super.initState();
+    _logoController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _logoController,
+      curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
+    );
+    _scaleAnimation = Tween<double>(begin: 0.85, end: 1.0).animate(
+      CurvedAnimation(parent: _logoController, curve: Curves.easeOutBack),
+    );
     _startDots();
+    _logoController.forward();
     _init();
   }
 
   @override
   void dispose() {
     _dotTimer?.cancel();
+    _logoController.dispose();
     super.dispose();
   }
 
@@ -39,7 +58,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _init() async {
-    await Future.delayed(const Duration(milliseconds: 800));
+    await Future.delayed(const Duration(milliseconds: 1200));
     await _loadVersion();
     await _checkUpdate();
     await _checkAuth();
@@ -48,10 +67,19 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _checkUpdate() async {
     setState(() => _status = 'Проверка обновлений');
     try {
-      final res = await coreCallTimeout('check_update', timeout: const Duration(seconds: 7));
+      final res = await coreCallTimeout('check_update', timeout: const Duration(seconds: 10));
       final current = _version;
 
-      if (res['ok'] == true && res['has_update'] == true && res['download_url'] != null) {
+      if (res['ok'] != true) {
+        setState(() {
+          _version = '$current';
+          _status = 'Не удалось проверить обновления';
+        });
+        await Future.delayed(const Duration(seconds: 1));
+        return;
+      }
+
+      if (res['has_update'] == true && res['download_url'] != null && res['download_url'].toString().isNotEmpty) {
         final newVersion = res['new_version']?.toString() ?? 'новая';
         setState(() {
           _version = '$current → v$newVersion';
@@ -59,16 +87,17 @@ class _SplashScreenState extends State<SplashScreen> {
         });
         if (!mounted) return;
         await _handleUpdate(newVersion, res['download_url'].toString());
-      } else if (res['ok'] == true) {
+      } else if (res['has_update'] == true) {
+        final newVersion = res['new_version']?.toString() ?? 'новая';
+        setState(() {
+          _version = '$current (доступна $newVersion, ссылка пуста)';
+          _status = 'Нет ссылки на обновление';
+        });
+        await Future.delayed(const Duration(seconds: 2));
+      } else {
         setState(() {
           _version = '$current (актуальная)';
           _status = 'Актуальная';
-        });
-        await Future.delayed(const Duration(seconds: 1));
-      } else {
-        setState(() {
-          _version = '$current';
-          _status = 'Не удалось проверить обновления';
         });
         await Future.delayed(const Duration(seconds: 1));
       }
@@ -98,7 +127,6 @@ class _SplashScreenState extends State<SplashScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
-        // Авто-скачивание через 3 секунды, если пользователь не нажал кнопку.
         Future.delayed(const Duration(seconds: 3), () {
           if (ctx.mounted && !autoConfirmed) {
             autoConfirmed = true;
@@ -165,28 +193,50 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.bg,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('BLACK BOX', style: AppTheme.header()),
-            const SizedBox(height: 12),
-            Text(
-              'Pattern Analysis System',
-              style: AppTheme.title(color: AppTheme.accent),
-            ),
-            const SizedBox(height: 60),
-            Text(
-              '$_status$_dots',
-              style: AppTheme.small(),
-            ),
-            const SizedBox(height: 16),
-            if (_version.isNotEmpty)
+      body: SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Spacer(flex: 2),
+              FadeTransition(
+                opacity: _fadeAnimation,
+                child: ScaleTransition(
+                  scale: _scaleAnimation,
+                  child: Image.asset(
+                    'assets/logo.png',
+                    width: 160,
+                    height: 160,
+                    fit: BoxFit.contain,
+                    errorBuilder: (c, e, s) => const Icon(
+                      Icons.analytics,
+                      size: 120,
+                      color: AppTheme.accent,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 32),
+              Text('BLACK BOX', style: AppTheme.header()),
+              const SizedBox(height: 10),
               Text(
-                _version,
+                'Pattern Analysis System',
+                style: AppTheme.title(color: AppTheme.accent),
+              ),
+              const Spacer(flex: 1),
+              Text(
+                '$_status$_dots',
                 style: AppTheme.small(),
               ),
-          ],
+              const SizedBox(height: 16),
+              if (_version.isNotEmpty)
+                Text(
+                  _version,
+                  style: AppTheme.small(),
+                ),
+              const SizedBox(height: 40),
+            ],
+          ),
         ),
       ),
     );
