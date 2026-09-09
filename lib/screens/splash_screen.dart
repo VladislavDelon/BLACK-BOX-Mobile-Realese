@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../app_theme.dart';
@@ -61,42 +60,41 @@ class _SplashScreenState extends State<SplashScreen>
     await Future.delayed(const Duration(milliseconds: 1200));
     await _loadVersion();
     await _checkUpdate();
+    if (!mounted) return;
     await _checkAuth();
   }
 
   Future<void> _checkUpdate() async {
     setState(() => _status = 'Проверка обновлений');
     try {
-      final res = await coreCallTimeout('check_update', timeout: const Duration(seconds: 10));
-      final current = _version;
+      final res = await coreCallTimeout('check_update', timeout: const Duration(seconds: 12));
+      final current = res['current_version']?.toString() ?? _version;
 
       if (res['ok'] != true) {
         setState(() {
-          _version = '$current';
+          _version = 'v$current';
           _status = 'Не удалось проверить обновления';
         });
         await Future.delayed(const Duration(seconds: 1));
         return;
       }
 
-      if (res['has_update'] == true && res['download_url'] != null && res['download_url'].toString().isNotEmpty) {
+      if (res['has_update'] == true) {
         final newVersion = res['new_version']?.toString() ?? 'новая';
+        final url = res['download_url']?.toString() ?? '';
         setState(() {
-          _version = '$current → v$newVersion';
+          _version = 'v$current → v$newVersion';
           _status = 'Доступна $newVersion';
         });
-        if (!mounted) return;
-        await _handleUpdate(newVersion, res['download_url'].toString());
-      } else if (res['has_update'] == true) {
-        final newVersion = res['new_version']?.toString() ?? 'новая';
-        setState(() {
-          _version = '$current (доступна $newVersion, ссылка пуста)';
-          _status = 'Нет ссылки на обновление';
-        });
-        await Future.delayed(const Duration(seconds: 2));
+        if (url.isNotEmpty) {
+          await _startDownload(newVersion, url);
+        } else {
+          setState(() => _status = 'Нет ссылки на обновление');
+          await Future.delayed(const Duration(seconds: 2));
+        }
       } else {
         setState(() {
-          _version = '$current (актуальная)';
+          _version = 'v$current (актуальная)';
           _status = 'Актуальная';
         });
         await Future.delayed(const Duration(seconds: 1));
@@ -107,27 +105,30 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
-  Future<void> _handleUpdate(String newVersion, String url) async {
+  Future<void> _startDownload(String newVersion, String url) async {
     if (!mounted) return;
-    final go = await _showUpdateDialog(newVersion, url);
-    if (go == true && mounted) {
-      setState(() => _status = 'Открытие загрузки');
+    final shouldDownload = await _showUpdateSheet(newVersion, url);
+    if (shouldDownload == true && mounted) {
+      setState(() => _status = 'Начинается скачивание v$newVersion');
       final uri = Uri.parse(url);
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       }
-      setState(() => _status = 'Загрузка началась');
+      setState(() => _status = 'Скачивание открыто в браузере');
       await Future.delayed(const Duration(seconds: 2));
+    } else if (shouldDownload == false) {
+      setState(() => _status = 'Обновление отложено');
+      await Future.delayed(const Duration(seconds: 1));
     }
   }
 
-  Future<bool> _showUpdateDialog(String version, String url) {
+  Future<bool?> _showUpdateSheet(String version, String url) {
     bool autoConfirmed = false;
     return showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
-        Future.delayed(const Duration(seconds: 3), () {
+        Future.delayed(const Duration(seconds: 1), () {
           if (ctx.mounted && !autoConfirmed) {
             autoConfirmed = true;
             Navigator.of(ctx).pop(true);
@@ -135,9 +136,9 @@ class _SplashScreenState extends State<SplashScreen>
         });
         return AlertDialog(
           backgroundColor: AppTheme.card,
-          title: Text('Доступна новая версия', style: AppTheme.title()),
+          title: Text('Доступна v$version', style: AppTheme.title()),
           content: Text(
-            'Версия $version уже выложена.\n\nСкачивание начнётся автоматически через 3 секунды.',
+            'Новая версия уже готова.\n\nСкачивание начнётся автоматически через 1 секунду.',
             style: AppTheme.body(),
           ),
           actions: [

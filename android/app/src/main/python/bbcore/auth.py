@@ -643,25 +643,84 @@ def get_current_version():
     return config.VERSION
 
 
+def _parse_version(v):
+    """Превращает строку версии в кортеж чисел, игнорируя префикс v/V."""
+    v = (v or "").strip().lower()
+    if v.startswith("v"):
+        v = v[1:]
+    parts = v.split(".")
+    out = []
+    for p in parts:
+        try:
+            out.append(int(p))
+        except ValueError:
+            # нечисловые части (pre-release и т.п.) пока игнорируем
+            continue
+    return tuple(out or [0])
+
+
+def _is_newer(a, b):
+    """True если a строго больше b как семантическая версия."""
+    return _parse_version(a) > _parse_version(b)
+
+
+def _latest_release_json():
+    """Получает последний релиз публичного репозитория через GitHub API."""
+    try:
+        owner, repo = "VladislavDelon", "BLACK-BOX-Mobile-Realese"
+    except Exception:
+        owner, repo = "", ""
+    if not owner or not repo:
+        return None
+    api_url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "BLACK-BOX-Mobile",
+    }
+    if config.GITHUB_TOKEN:
+        headers["Authorization"] = f"token {config.GITHUB_TOKEN}"
+    try:
+        r = _request_with_fallback(
+            "get", api_url, headers=headers,
+            timeout=10, allow_redirects=True, ok_codes=(200,),
+        )
+        if not r:
+            return None
+        return r.json()
+    except Exception as e:
+        print(f"[latest release] {e}")
+        return None
+
+
+def _apk_download_url(release):
+    """Находит URL APK-ассета в релизе."""
+    assets = release.get("assets") or []
+    tag = (release.get("tag_name") or "").strip()
+    for asset in assets:
+        name = (asset.get("name") or "").lower()
+        if name.endswith(".apk"):
+            return asset.get("browser_download_url") or ""
+    # Fallback на известную схему имени.
+    if tag:
+        version = tag[1:] if tag.startswith("v") else tag
+        return f"https://github.com/VladislavDelon/BLACK-BOX-Mobile-Realese/releases/download/{tag}/BLACK_BOX_Mobile_v{version}.apk"
+    return ""
+
+
 def check_for_update(current_version=None):
     """Возвращает (has_update, new_version, download_url)."""
-    if not VERSION_URL:
-        return False, None, None
     if current_version is None:
         current_version = get_current_version()
     try:
-        headers = {"Accept": "application/json"}
-        r = _request_with_fallback(
-            "get", VERSION_URL, headers=headers,
-            timeout=5, allow_redirects=True, ok_codes=(200,),
-        )
-        if not r:
+        release = _latest_release_json()
+        if not release:
             return False, None, None
-        data = r.json()
-        new_version = data.get("version")
-        download_url = data.get("download_url") or UPDATE_URL
-        if new_version and new_version != current_version:
-            return True, new_version, download_url
+        tag = release.get("tag_name", "")
+        new_version = tag[1:] if tag.startswith("v") else tag
+        if not new_version:
+            return False, None, None
+        if _is_newer(new_version, current_version):
+            return True, new_version, _apk_download_url(release)
         return False, new_version, None
     except Exception as e:
         print(f"[check update] {e}")
@@ -676,4 +735,5 @@ def update_info(current_version=None):
         "has_update": bool(has_update),
         "new_version": new_version or "",
         "download_url": download_url or "",
+        "current_version": current_version or get_current_version(),
     }

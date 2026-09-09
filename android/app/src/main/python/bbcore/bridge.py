@@ -146,6 +146,15 @@ def get_version():
 def check_update():
     try:
         has_update, new_version, download_url = auth.check_for_update(config.VERSION)
+        if new_version is None:
+            return {
+                "ok": False,
+                "error": "Не удалось получить удалённую версию",
+                "has_update": False,
+                "new_version": "",
+                "download_url": "",
+                "current_version": config.VERSION,
+            }
         return {
             "ok": True,
             "has_update": bool(has_update),

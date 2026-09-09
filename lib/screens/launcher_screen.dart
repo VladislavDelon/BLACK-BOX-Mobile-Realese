@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../app_theme.dart';
 import '../core/core_call.dart';
 import 'module_placeholder_screen.dart';
@@ -105,30 +106,50 @@ class _LauncherScreenState extends State<LauncherScreen> {
   Future<void> _checkUpdate() async {
     try {
       final res = await coreCallTimeout('check_update', timeout: const Duration(seconds: 10));
-      if (res['has_update'] == true) {
+      if (res['ok'] != true) {
         if (mounted) {
-          showDialog(
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Не удалось проверить обновления')),
+          );
+        }
+        return;
+      }
+      if (res['has_update'] == true) {
+        final version = res['new_version']?.toString() ?? 'новая';
+        final url = res['download_url']?.toString() ?? '';
+        if (mounted) {
+          final go = await showDialog<bool>(
             context: context,
-            builder: (_) => AlertDialog(
+            builder: (ctx) => AlertDialog(
               backgroundColor: AppTheme.card,
               title: Text('Доступно обновление', style: AppTheme.title()),
               content: Text(
-                'Версия ${res['new_version']}\n\nСкачать: ${res['download_url']}',
+                'Версия $version\n\nНачать скачивание?',
                 style: AppTheme.body(),
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => Navigator.pop(ctx, false),
                   child: const Text('Позже'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Скачать'),
                 ),
               ],
             ),
           );
+          if (go == true && url.isNotEmpty) {
+            final uri = Uri.parse(url);
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
+          }
         }
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Обновлений нет')),
+            const SnackBar(content: Text('Актуальная версия')),
           );
         }
       }
