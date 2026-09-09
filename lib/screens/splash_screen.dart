@@ -218,11 +218,6 @@ class _SplashScreenState extends State<SplashScreen>
               ),
               const SizedBox(height: 32),
               Text('BLACK BOX', style: AppTheme.header()),
-              const SizedBox(height: 10),
-              Text(
-                'Pattern Analysis System',
-                style: AppTheme.title(color: AppTheme.accent),
-              ),
               const Spacer(flex: 1),
               Text(
                 '$_status$_dots',
