@@ -1,0 +1,284 @@
+import 'package:flutter/material.dart';
+import '../app_theme.dart';
+import '../core/core_call.dart';
+import 'module_placeholder_screen.dart';
+
+class LauncherScreen extends StatefulWidget {
+  const LauncherScreen({super.key});
+
+  @override
+  State<LauncherScreen> createState() => _LauncherScreenState();
+}
+
+class _LauncherScreenState extends State<LauncherScreen> {
+  Map<String, dynamic>? _user;
+  String _version = '';
+
+  final List<_MenuCard> _cards = [
+    _MenuCard(
+      'Поиск по паттернам',
+      'Ищет в истории моменты, похожие на текущий график, и показывает, что было дальше.',
+      AppTheme.accent,
+      'pattern',
+    ),
+    _MenuCard(
+      'Мульти поиск по паттернам',
+      'Тот же поиск сразу по нескольким монетам: цена, прогноз, процент сделки.',
+      AppTheme.accent2,
+      'multi_pattern',
+    ),
+    _MenuCard(
+      'Мульти торговля',
+      'Автоматическая торговля по сигналам паттернов сразу по нескольким монетам.',
+      AppTheme.accent,
+      'multi_trading',
+    ),
+    _MenuCard(
+      'Стоимость валют',
+      'Актуальная цена монеты на разных биржах в реальном времени.',
+      AppTheme.accent2,
+      'asset_prices',
+    ),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    try {
+      final reg = await coreCall('load_registration');
+      final ver = await coreCall('get_version');
+      if (mounted) {
+        setState(() {
+          _user = reg['registration'] as Map<String, dynamic>?;
+          _version = ver['version']?.toString() ?? '';
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _version = '1.0.0');
+    }
+  }
+
+  Future<void> _logout() async {
+    try {
+      await coreCall('logout');
+    } catch (_) {}
+    if (mounted) Navigator.pushReplacementNamed(context, '/auth');
+  }
+
+  void _openModule(String id) {
+    final titles = {
+      'pattern': 'Поиск по паттернам',
+      'multi_pattern': 'Мульти поиск по паттернам',
+      'multi_trading': 'Мульти торговля',
+      'asset_prices': 'Стоимость валют',
+    };
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ModulePlaceholderScreen(
+          moduleId: id,
+          title: titles[id] ?? 'Модуль',
+        ),
+      ),
+    );
+  }
+
+  void _openExchange() {
+    Navigator.pushNamed(context, '/exchange');
+  }
+
+  Future<void> _openTokenDialog() async {
+    final ctrl = TextEditingController();
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppTheme.card,
+        title: Text('GitHub-токен', style: AppTheme.title()),
+        content: TextField(
+          controller: ctrl,
+          obscureText: true,
+          decoration: const InputDecoration(
+            labelText: 'Вставьте токен',
+            hintText: 'ghp_...',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final token = ctrl.text.trim();
+              if (token.isNotEmpty) {
+                await coreCall('set_github_token', {'token': token});
+              }
+              if (mounted) Navigator.pop(context);
+            },
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+  }
+
+  Future<void> _checkUpdate() async {
+    try {
+      final res = await coreCall('check_update');
+      if (res['has_update'] == true) {
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (_) => AlertDialog(
+              backgroundColor: AppTheme.card,
+              title: Text('Доступно обновление', style: AppTheme.title()),
+              content: Text(
+                'Версия ${res['new_version']}\n\nСкачать: ${res['download_url']}',
+                style: AppTheme.body(),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Позже'),
+                ),
+              ],
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Обновлений нет')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка проверки обновления: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.bg,
+      appBar: AppBar(
+        title: const Text('BLACK BOX'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.update, color: AppTheme.text),
+            onPressed: _checkUpdate,
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: AppTheme.text),
+            onSelected: (value) {
+              if (value == 'logout') _logout();
+              if (value == 'exchange') _openExchange();
+              if (value == 'token') _openTokenDialog();
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'exchange', child: Text('Подключение биржи')),
+              const PopupMenuItem(value: 'token', child: Text('GitHub-токен')),
+              const PopupMenuItem(value: 'logout', child: Text('Выйти')),
+            ],
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            if (_user != null)
+              Card(
+                color: AppTheme.card,
+                child: ListTile(
+                  title: Text(_user?['name']?.toString() ?? '',
+                      style: AppTheme.title(color: AppTheme.accent)),
+                  subtitle: Text('Авторизован', style: AppTheme.small()),
+                  trailing: TextButton(
+                    onPressed: _logout,
+                    child: const Text('Выйти'),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 12),
+            Text('Выберите, что запустить', style: AppTheme.small()),
+            const SizedBox(height: 14),
+            ..._cards.map((c) => _buildCard(c)),
+            const SizedBox(height: 24),
+            Text(
+              'Не запускайте несколько копий одновременно: биржи считают запросы по одному IP.',
+              style: AppTheme.small(color: AppTheme.lock),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Закрыв приложение, убедитесь, что остановлены фоновые процессы.',
+              style: AppTheme.small(color: AppTheme.lock),
+            ),
+            const SizedBox(height: 24),
+            if (_version.isNotEmpty)
+              Center(
+                child: Text('v$_version', style: AppTheme.small()),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCard(_MenuCard card) {
+    return GestureDetector(
+      onTap: () => _openModule(card.id),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: AppTheme.card,
+          borderRadius: BorderRadius.circular(AppTheme.cornerRadius),
+          border: Border.all(color: const Color(0xFF2A2A2A)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 6,
+              height: 70,
+              decoration: BoxDecoration(
+                color: card.color,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(card.title, style: AppTheme.title()),
+                  const SizedBox(height: 6),
+                  Text(card.desc, style: AppTheme.small()),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: AppTheme.muted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MenuCard {
+  final String title;
+  final String desc;
+  final Color color;
+  final String id;
+  _MenuCard(this.title, this.desc, this.color, this.id);
+}

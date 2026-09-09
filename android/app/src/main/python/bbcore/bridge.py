@@ -5,6 +5,8 @@ import json
 import os
 
 from bbcore import exchange_api
+from bbcore import auth
+from bbcore import config
 
 # Папка для локальных данных задаётся из Kotlin (filesDir приложения)
 _DATA_DIR = None
@@ -14,7 +16,9 @@ def init(data_dir: str):
     """Вызывается из Kotlin при старте. data_dir — приватная папка приложения."""
     global _DATA_DIR
     _DATA_DIR = data_dir
+    os.environ["FILES_DIR"] = data_dir
     os.makedirs(_DATA_DIR, exist_ok=True)
+    auth.init_data_dir(data_dir)
     return {"ok": True, "data_dir": _DATA_DIR}
 
 
@@ -129,6 +133,82 @@ def _write_keys(payload: dict):
 
 
 # ----------------------------------------------------------
+# Версия / обновления / авторизация
+# ----------------------------------------------------------
+
+def get_version():
+    return {"ok": True, "version": config.VERSION}
+
+
+def check_update():
+    try:
+        has_update, new_version, download_url = auth.check_for_update(config.VERSION)
+        return {
+            "ok": True,
+            "has_update": bool(has_update),
+            "new_version": new_version or "",
+            "download_url": download_url or "",
+            "current_version": config.VERSION,
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def get_auth_state():
+    try:
+        registered = auth.is_registered()
+        reg = auth.load_registration() if registered else {}
+        return {"ok": True, "registered": registered, "registration": reg}
+    except Exception as e:
+        return {"ok": False, "registered": False, "error": str(e)}
+
+
+def load_registration():
+    try:
+        return {"ok": True, "registration": auth.load_registration()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def register(name: str, password: str, key: str,
+             email: str = "", remember: bool = True):
+    try:
+        result = auth.register(name, key, password=password,
+                               email=email or None, remember=remember)
+        if result is True:
+            return {"ok": True}
+        return {"ok": False, "error": result or "invalid_key"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def login(name: str, password: str, key: str, remember: bool = True):
+    try:
+        result = auth.login(name, password, key, remember=remember)
+        if result is True:
+            return {"ok": True}
+        return {"ok": False, "error": result or "wrong_credentials"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def logout():
+    try:
+        auth.save_registration({})
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def set_github_token(token: str):
+    try:
+        auth.set_github_token(token)
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ----------------------------------------------------------
 # JSON-диспетчер для MethodChannel: одна точка входа из Kotlin.
 # ----------------------------------------------------------
 
@@ -142,6 +222,14 @@ _METHODS = {
     "set_active": set_active,
     "get_active": get_active,
     "delete_account": delete_account,
+    "get_version": get_version,
+    "check_update": check_update,
+    "get_auth_state": get_auth_state,
+    "load_registration": load_registration,
+    "register": register,
+    "login": login,
+    "logout": logout,
+    "set_github_token": set_github_token,
 }
 
 
