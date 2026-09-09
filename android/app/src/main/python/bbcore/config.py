@@ -57,6 +57,14 @@ UPDATE_URL = "https://github.com/VladislavDelon/BLACK-BOX-Mobile-Realese/release
 GITHUB_REPO = os.environ.get("BB_GITHUB_REPO", "VladislavDelon/blackbox-keys")
 GITHUB_TOKEN = os.environ.get("BB_GITHUB_TOKEN", "")
 
+# Встроенный build-time токен (если token_build.py сгенерирован при сборке).
+try:
+    from bbcore import token_build
+    if token_build.GITHUB_TOKEN and not GITHUB_TOKEN:
+        GITHUB_TOKEN = token_build.GITHUB_TOKEN
+except Exception:
+    pass
+
 # Если в окружении токен не задан, пробуем загрузить ранее сохранённый.
 _TOKEN_FILE = os.path.join(APP_DIR, "token.txt")
 if not GITHUB_TOKEN and os.path.exists(_TOKEN_FILE):

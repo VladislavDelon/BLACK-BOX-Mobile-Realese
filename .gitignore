@@ -62,6 +62,7 @@ keys/
 exchange_keys.json
 /android/keystore/
 /android/key.properties
+/android/app/src/main/python/bbcore/token_build.py
 
 # Widget Preview related
 .widget_preview/

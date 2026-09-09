@@ -18,11 +18,9 @@ class _AuthScreenState extends State<AuthScreen> {
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _keyCtrl = TextEditingController();
-  final _tokenCtrl = TextEditingController();
   bool _remember = true;
   bool _showPassword = false;
   bool _showKey = false;
-  bool _showToken = false;
 
   final _ruLabels = {
     'title': 'BLACK BOX',
@@ -33,8 +31,6 @@ class _AuthScreenState extends State<AuthScreen> {
     'email': 'Почта',
     'password': 'Пароль',
     'key': 'Уникальный ключ',
-    'token': 'GitHub токен',
-    'token_hint': 'Токен нужен для доступа к blackbox-keys',
     'remember': 'Запомнить',
     'show': 'Показать',
     'activate': 'Активировать',
@@ -48,9 +44,8 @@ class _AuthScreenState extends State<AuthScreen> {
     final name = _nameCtrl.text.trim();
     final password = _passwordCtrl.text.trim();
     final key = _keyCtrl.text.trim();
-    final token = _tokenCtrl.text.trim();
 
-    if (name.isEmpty || password.isEmpty || key.isEmpty || token.isEmpty ||
+    if (name.isEmpty || password.isEmpty || key.isEmpty ||
         (_mode == 'register' && _emailCtrl.text.trim().isEmpty)) {
       setState(() => _status = _ruLabels['fill_fields']!);
       return;
@@ -62,12 +57,6 @@ class _AuthScreenState extends State<AuthScreen> {
     });
 
     try {
-      final tokRes = await coreCall('set_github_token', {'token': token});
-      if (tokRes['ok'] != true) {
-        setState(() => _status = 'Не удалось сохранить токен: ${tokRes['error']}');
-        return;
-      }
-
       final Map<String, dynamic> args = {
         'name': name,
         'password': password,
@@ -174,16 +163,6 @@ class _AuthScreenState extends State<AuthScreen> {
             toggle: () => setState(() => _showKey = !_showKey),
             show: _showKey,
           ),
-          const SizedBox(height: 12),
-          _field(
-            _ruLabels['token']!,
-            _tokenCtrl,
-            obscure: !_showToken,
-            toggle: () => setState(() => _showToken = !_showToken),
-            show: _showToken,
-          ),
-          const SizedBox(height: 4),
-          Text(_ruLabels['token_hint']!, style: AppTheme.small(color: AppTheme.muted)),
           const SizedBox(height: 8),
           CheckboxListTile(
             value: _remember,
@@ -262,7 +241,6 @@ class _AuthScreenState extends State<AuthScreen> {
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
     _keyCtrl.dispose();
-    _tokenCtrl.dispose();
     super.dispose();
   }
 }
