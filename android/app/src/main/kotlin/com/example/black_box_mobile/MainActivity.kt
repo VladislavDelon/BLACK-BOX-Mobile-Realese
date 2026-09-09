@@ -1,4 +1,4 @@
-package com.example.black_box_mobile
+package com.vladislavdelon.blackboxmobile
 
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python

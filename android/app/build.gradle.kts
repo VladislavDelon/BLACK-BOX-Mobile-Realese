@@ -31,7 +31,8 @@ android {
         versionName = flutter.versionName
 
         ndk {
-            abiFilters = listOf("arm64-v8a", "x86_64")
+            abiFilters.clear()
+            abiFilters.addAll(setOf("arm64-v8a", "x86_64"))
         }
     }
 
