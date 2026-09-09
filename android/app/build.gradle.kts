@@ -81,3 +81,31 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+// -----------------------------------------------------------------
+// Android Gradle Plugin 9.x не сбрасывает debug-символы libflutter.so
+// в некоторых конфигурациях. Принудительно вычищаем .debug_* секции
+// после встроенной strip-задачи, чтобы APK не вздувался до 180+ МБ.
+// -----------------------------------------------------------------
+tasks.configureEach {
+    if (name == "stripReleaseDebugSymbols") {
+        doLast {
+            val ndkDir = project.android.ndkDirectory
+            val llvmStrip = ndkDir.resolve(
+                "toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-strip.exe"
+            )
+            if (llvmStrip.exists()) {
+                outputs.files.asFileTree.matching {
+                    include("**/*.so")
+                }.forEach { soFile ->
+                    val p = ProcessBuilder(
+                        llvmStrip.absolutePath,
+                        "--strip-debug",
+                        soFile.absolutePath,
+                    ).start()
+                    p.waitFor()
+                }
+            }
+        }
+    }
+}

@@ -145,6 +145,27 @@ class BinanceAPI:
             for c in r.json()
         ]
 
+    def get_price(self, symbol: str) -> dict:
+        """Возвращает last/bid/ask по фьючерсному символу."""
+        s = symbol.upper()
+        try:
+            r = requests.get(
+                f"{self.base_url}/fapi/v1/ticker/24hr",
+                params={"symbol": s},
+                timeout=15,
+            )
+            if r.status_code != 200:
+                raise ExchangeError(f"Binance price error {r.status_code}: {r.text}")
+            data = r.json()
+            return {
+                "last": float(data.get("lastPrice", 0)),
+                "bid": float(data.get("bidPrice", 0)),
+                "ask": float(data.get("askPrice", 0)),
+                "change_pct": float(data.get("priceChangePercent", 0)),
+            }
+        except Exception as e:
+            raise ExchangeError(f"Binance get_price error: {e}")
+
     def get_usdt_symbols(self):
         """Список USDT-M фьючерсных пар."""
         try:
@@ -383,6 +404,28 @@ class MEXCAPI:
                 float(row[3]), float(row[4]) if len(row) > 4 else 0.0,
             ])
         return out
+
+    def get_price(self, symbol: str) -> dict:
+        """Возвращает last/bid/ask по фьючерсному символу MEXC."""
+        mexc = self._symbol(symbol)
+        try:
+            r = requests.get(
+                f"{self.base_url}/api/v1/contract/ticker?symbol={mexc}",
+                timeout=15,
+            )
+            if r.status_code != 200:
+                raise ExchangeError(f"MEXC price error {r.status_code}: {r.text}")
+            d = r.json().get("data", {})
+            if isinstance(d, list) and d:
+                d = d[0]
+            return {
+                "last": float(d.get("lastPrice", 0)),
+                "bid": float(d.get("bid1Price", d.get("bidPrice", 0))),
+                "ask": float(d.get("ask1Price", d.get("askPrice", 0))),
+                "change_pct": float(d.get("riseFallRate", 0)) * 100,
+            }
+        except Exception as e:
+            raise ExchangeError(f"MEXC get_price error: {e}")
 
     def get_usdt_symbols(self):
         try:
