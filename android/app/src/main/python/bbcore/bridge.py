@@ -215,11 +215,24 @@ def set_github_token(token: str):
 # Анализ / поиск по паттернам
 # ----------------------------------------------------------
 
+def _all_symbols_fallback():
+    """Статический список USDT-M фьючерсных пар на случай недоступности API."""
+    try:
+        path = os.path.join(os.path.dirname(__file__), "assets", "all_symbols.json")
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
 def get_symbols(exchange: str, api_key: str = "", api_secret: str = "", testnet: bool = False):
     try:
         api = exchange_api.get_api(exchange, api_key or "-", api_secret or "-", testnet=testnet)
         return {"ok": True, "symbols": api.get_usdt_symbols()}
     except Exception as e:
+        symbols = _all_symbols_fallback()
+        if symbols:
+            return {"ok": True, "symbols": symbols, "note": "offline"}
         return {"ok": False, "error": str(e)}
 
 

@@ -100,19 +100,9 @@ class _SymbolAutocompleteFieldState extends State<SymbolAutocompleteField> {
           textCapitalization: TextCapitalization.characters,
           decoration: InputDecoration(
             labelText: widget.label,
-            hintText: 'Начните вводить или выберите',
+            hintText: 'Начните вводить BTC, ETH, SOL...',
             suffixIcon: widget.symbols.isNotEmpty
-                ? PopupMenuButton<String>(
-                    icon: const Icon(Icons.arrow_drop_down, color: AppTheme.muted),
-                    color: AppTheme.card,
-                    onSelected: (s) {
-                      controller.text = s;
-                      widget.onSelected(s);
-                    },
-                    itemBuilder: (_) => widget.symbols
-                        .map((s) => PopupMenuItem(value: s, child: Text(s, style: AppTheme.body())))
-                        .toList(),
-                  )
+                ? const Icon(Icons.search, color: AppTheme.muted, size: 20)
                 : null,
           ),
         );
