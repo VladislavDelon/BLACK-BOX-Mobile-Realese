@@ -102,42 +102,6 @@ class _LauncherScreenState extends State<LauncherScreen> {
     Navigator.pushNamed(context, '/exchange');
   }
 
-  Future<void> _openTokenDialog() async {
-    final ctrl = TextEditingController();
-    await showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: AppTheme.card,
-        title: Text('GitHub-токен', style: AppTheme.title()),
-        content: TextField(
-          controller: ctrl,
-          obscureText: true,
-          decoration: const InputDecoration(
-            labelText: 'Вставьте токен',
-            hintText: 'ghp_...',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Отмена'),
-          ),
-          TextButton(
-            onPressed: () async {
-              final token = ctrl.text.trim();
-              if (token.isNotEmpty) {
-                await coreCall('set_github_token', {'token': token});
-              }
-              if (mounted) Navigator.pop(context);
-            },
-            child: const Text('Сохранить'),
-          ),
-        ],
-      ),
-    );
-    ctrl.dispose();
-  }
-
   Future<void> _checkUpdate() async {
     try {
       final res = await coreCall('check_update');
@@ -193,11 +157,9 @@ class _LauncherScreenState extends State<LauncherScreen> {
             onSelected: (value) {
               if (value == 'logout') _logout();
               if (value == 'exchange') _openExchange();
-              if (value == 'token') _openTokenDialog();
             },
             itemBuilder: (_) => [
               const PopupMenuItem(value: 'exchange', child: Text('Подключение биржи')),
-              const PopupMenuItem(value: 'token', child: Text('GitHub-токен')),
               const PopupMenuItem(value: 'logout', child: Text('Выйти')),
             ],
           ),
@@ -224,16 +186,6 @@ class _LauncherScreenState extends State<LauncherScreen> {
             Text('Выберите, что запустить', style: AppTheme.small()),
             const SizedBox(height: 14),
             ..._cards.map((c) => _buildCard(c)),
-            const SizedBox(height: 24),
-            Text(
-              'Не запускайте несколько копий одновременно: биржи считают запросы по одному IP.',
-              style: AppTheme.small(color: AppTheme.lock),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Закрыв приложение, убедитесь, что остановлены фоновые процессы.',
-              style: AppTheme.small(color: AppTheme.lock),
-            ),
             const SizedBox(height: 24),
             if (_version.isNotEmpty)
               Center(

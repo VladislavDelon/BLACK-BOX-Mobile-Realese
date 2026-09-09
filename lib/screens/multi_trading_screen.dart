@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../app_theme.dart';
 import '../core/core_call.dart';
+import '../services/symbols_service.dart';
+import '../widgets/symbol_picker.dart';
 
 class MultiTradingScreen extends StatefulWidget {
   const MultiTradingScreen({super.key});
@@ -10,8 +12,8 @@ class MultiTradingScreen extends StatefulWidget {
 }
 
 class _MultiTradingScreenState extends State<MultiTradingScreen> {
-  final _symbolsCtrl = TextEditingController(text: "BTCUSDT, ETHUSDT, SOLUSDT, DOGEUSDT");
-  String _interval = "15m";
+  List<String> _symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'DOGEUSDT'];
+  String _interval = '15m';
   int _patternLength = 60;
   int _forecastHorizon = 5;
   int _topN = 5;
@@ -19,80 +21,94 @@ class _MultiTradingScreenState extends State<MultiTradingScreen> {
   double _tradeThreshold = 1.5;
   double _positionSize = 100.0;
   int _leverage = 10;
-  String _amountMode = "fixed";
-  String _tpMode = "signal";
+  String _amountMode = 'fixed';
+  String _tpMode = 'signal';
   double _tpPct = 0.0;
-  String _slMode = "signal";
+  String _slMode = 'signal';
   double _slPct = 0.0;
 
   bool _busy = false;
-  String _status = "";
+  String _status = '';
   Map<String, dynamic>? _result;
+  List<String> _allSymbols = [];
+  bool _hasAccount = false;
 
-  final _intervals = ["1m", "3m", "5m", "15m", "30m", "1h"];
-  final _amountModes = ["fixed", "percent", "split"];
-  final _tpSlModes = ["signal", "fixed"];
+  final _intervals = ['1m', '3m', '5m', '15m', '30m', '1h'];
+  final _amountModes = ['fixed', 'percent', 'split'];
+  final _tpSlModes = ['signal', 'fixed'];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSymbols();
+    _checkAccount();
+  }
+
+  Future<void> _loadSymbols() async {
+    final list = await SymbolsService.getSymbols();
+    setState(() => _allSymbols = list);
+  }
+
+  Future<void> _checkAccount() async {
+    final res = await coreCall('get_active');
+    setState(() => _hasAccount = res['ok'] == true && res['account'] != null);
+  }
 
   Future<void> _run() async {
-    final acc = await coreCall("get_active");
-    if (acc["ok"] != true) {
-      setState(() => _status = "Сначала подключите биржу в меню 'Подключение биржи'");
+    final acc = await coreCall('get_active');
+    if (acc['ok'] != true) {
+      setState(() => _status = 'Сначала подключите биржу');
       return;
     }
 
-    final account = acc["account"] as Map<String, dynamic>;
-    final exchange = account["exchange"] as String;
-    final apiKey = account["api_key"] as String;
-    final apiSecret = account["api_secret"] as String;
-    final testnet = (account["testnet"] as bool?) ?? false;
+    final account = acc['account'] as Map<String, dynamic>;
+    final exchange = account['exchange'] as String;
+    final apiKey = account['api_key'] as String;
+    final apiSecret = account['api_secret'] as String;
+    final testnet = (account['testnet'] as bool?) ?? false;
 
-    final symbols = _symbolsCtrl.text
-        .split(",")
-        .map((s) => s.trim().toUpperCase())
-        .where((s) => s.isNotEmpty)
-        .toList();
-    if (symbols.isEmpty) {
-      setState(() => _status = "Введите символы");
+    if (_symbols.isEmpty) {
+      setState(() => _status = 'Выберите монеты');
       return;
     }
 
     setState(() {
       _busy = true;
-      _status = "Торговый цикл...";
+      _status = 'Торговый цикл...';
       _result = null;
     });
 
     try {
-      final res = await coreCall("run_trading_cycle", {
-        "symbols": symbols,
-        "exchange": exchange,
-        "api_key": apiKey,
-        "api_secret": apiSecret,
-        "testnet": testnet,
-        "interval": _interval,
-        "pattern_length": _patternLength,
-        "forecast_horizon": _forecastHorizon,
-        "top_n": _topN,
-        "min_signal_threshold": _minSignalThreshold,
-        "trade_threshold": _tradeThreshold,
-        "position_size": _positionSize,
-        "leverage": _leverage,
-        "amount_mode": _amountMode,
-        "tp_mode": _tpMode,
-        "tp_pct": _tpPct,
-        "sl_mode": _slMode,
-        "sl_pct": _slPct,
+      final res = await coreCall('run_trading_cycle', {
+        'symbols': _symbols,
+        'exchange': exchange,
+        'api_key': apiKey,
+        'api_secret': apiSecret,
+        'testnet': testnet,
+        'interval': _interval,
+        'pattern_length': _patternLength,
+        'forecast_horizon': _forecastHorizon,
+        'top_n': _topN,
+        'min_signal_threshold': _minSignalThreshold,
+        'trade_threshold': _tradeThreshold,
+        'position_size': _positionSize,
+        'leverage': _leverage,
+        'amount_mode': _amountMode,
+        'tp_mode': _tpMode,
+        'tp_pct': _tpPct,
+        'sl_mode': _slMode,
+        'sl_pct': _slPct,
       });
-      if (res["ok"] == true) {
+      if (res['ok'] == true) {
         setState(() {
           _result = res;
-          _status = "Цикл завершён";
+          _status = 'Цикл завершён';
         });
       } else {
-        setState(() => _status = "Ошибка: ${res['error']}");
+        setState(() => _status = 'Ошибка: ${res['error']}');
       }
     } catch (e) {
-      setState(() => _status = "Ошибка канала: $e");
+      setState(() => _status = 'Ошибка канала: $e');
     } finally {
       setState(() => _busy = false);
     }
@@ -100,13 +116,13 @@ class _MultiTradingScreenState extends State<MultiTradingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final trades = (_result?["trades"] as List<dynamic>?) ?? [];
-    final errors = (_result?["errors"] as List<dynamic>?) ?? [];
-    final skipped = (_result?["skipped"] as List<dynamic>?) ?? [];
+    final trades = (_result?['trades'] as List<dynamic>?) ?? [];
+    final errors = (_result?['errors'] as List<dynamic>?) ?? [];
+    final skipped = (_result?['skipped'] as List<dynamic>?) ?? [];
 
     return Scaffold(
       backgroundColor: AppTheme.bg,
-      appBar: AppBar(title: const Text("Мульти торговля")),
+      appBar: AppBar(title: const Text('Мульти торговля')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(20),
@@ -115,45 +131,53 @@ class _MultiTradingScreenState extends State<MultiTradingScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Настройки", style: AppTheme.title()),
+                  Text('Настройки', style: AppTheme.title()),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: _symbolsCtrl,
-                    decoration: const InputDecoration(
-                      labelText: "Монеты через запятую",
-                      hintText: "BTCUSDT, ETHUSDT, SOLUSDT",
+                  if (!_hasAccount)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: () => Navigator.pushNamed(context, '/exchange').then((_) => _checkAccount()),
+                          style: FilledButton.styleFrom(backgroundColor: AppTheme.accent2),
+                          child: const Text('Подключить биржу'),
+                        ),
+                      ),
                     ),
-                    minLines: 2,
-                    maxLines: 3,
+                  MultiSymbolPicker(
+                    selected: _symbols,
+                    symbols: _allSymbols,
+                    onChanged: (v) => setState(() => _symbols = v),
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     value: _interval,
                     dropdownColor: AppTheme.card,
                     style: const TextStyle(color: AppTheme.text),
-                    decoration: const InputDecoration(labelText: "Интервал"),
+                    decoration: const InputDecoration(labelText: 'Интервал'),
                     items: _intervals
                         .map((i) => DropdownMenuItem(value: i, child: Text(i)))
                         .toList(),
                     onChanged: (v) => setState(() => _interval = v!),
                   ),
                   const SizedBox(height: 12),
-                  _intField("Длина паттерна", _patternLength, (v) => _patternLength = v),
-                  _intField("Горизонт", _forecastHorizon, (v) => _forecastHorizon = v),
-                  _intField("TOP-N", _topN, (v) => _topN = v),
-                  _doubleField("Порог сигнала (%)", _minSignalThreshold, (v) => _minSignalThreshold = v),
-                  _doubleField("Порог открытия (%)", _tradeThreshold, (v) => _tradeThreshold = v),
-                  _doubleField("Размер позиции", _positionSize, (v) => _positionSize = v),
-                  _intField("Плечо", _leverage, (v) => _leverage = v),
+                  _intField('Длина паттерна', _patternLength, (v) => _patternLength = v),
+                  _intField('Горизонт', _forecastHorizon, (v) => _forecastHorizon = v),
+                  _intField('TOP-N', _topN, (v) => _topN = v),
+                  _doubleField('Порог сигнала (%)', _minSignalThreshold, (v) => _minSignalThreshold = v),
+                  _doubleField('Порог открытия (%)', _tradeThreshold, (v) => _tradeThreshold = v),
+                  _doubleField('Размер позиции', _positionSize, (v) => _positionSize = v),
+                  _intField('Плечо', _leverage, (v) => _leverage = v),
                   DropdownButtonFormField<String>(
                     value: _amountMode,
                     dropdownColor: AppTheme.card,
                     style: const TextStyle(color: AppTheme.text),
-                    decoration: const InputDecoration(labelText: "Режим суммы"),
+                    decoration: const InputDecoration(labelText: 'Режим суммы'),
                     items: {
-                      "fixed": "Фиксированная сумма",
-                      "percent": "% от баланса",
-                      "split": "Разделить бюджет",
+                      'fixed': 'Фиксированная сумма',
+                      'percent': '% от баланса',
+                      'split': 'Разделить бюджет',
                     }
                         .entries
                         .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
@@ -168,7 +192,7 @@ class _MultiTradingScreenState extends State<MultiTradingScreen> {
                           value: _tpMode,
                           dropdownColor: AppTheme.card,
                           style: const TextStyle(color: AppTheme.text),
-                          decoration: const InputDecoration(labelText: "TP режим"),
+                          decoration: const InputDecoration(labelText: 'TP режим'),
                           items: _tpSlModes
                               .map((m) => DropdownMenuItem(value: m, child: Text(m)))
                               .toList(),
@@ -177,7 +201,7 @@ class _MultiTradingScreenState extends State<MultiTradingScreen> {
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: _doubleField("TP %", _tpPct, (v) => _tpPct = v),
+                        child: _doubleField('TP %', _tpPct, (v) => _tpPct = v),
                       ),
                     ],
                   ),
@@ -189,7 +213,7 @@ class _MultiTradingScreenState extends State<MultiTradingScreen> {
                           value: _slMode,
                           dropdownColor: AppTheme.card,
                           style: const TextStyle(color: AppTheme.text),
-                          decoration: const InputDecoration(labelText: "SL режим"),
+                          decoration: const InputDecoration(labelText: 'SL режим'),
                           items: _tpSlModes
                               .map((m) => DropdownMenuItem(value: m, child: Text(m)))
                               .toList(),
@@ -198,7 +222,7 @@ class _MultiTradingScreenState extends State<MultiTradingScreen> {
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: _doubleField("SL %", _slPct, (v) => _slPct = v),
+                        child: _doubleField('SL %', _slPct, (v) => _slPct = v),
                       ),
                     ],
                   ),
@@ -212,7 +236,7 @@ class _MultiTradingScreenState extends State<MultiTradingScreen> {
                               height: 18,
                               width: 18,
                               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                          : const Text("▶ Запустить торговый цикл"),
+                          : const Text('▶ Запустить торговый цикл'),
                     ),
                   ),
                 ],
@@ -224,26 +248,35 @@ class _MultiTradingScreenState extends State<MultiTradingScreen> {
                 child: Text(_status, style: AppTheme.body()),
               ),
             if (_result != null)
-              Text("Баланс: ${_result?['balance']?.toStringAsFixed(2) ?? '-'} USDT",
+              Text('Баланс: ${_result?['balance']?.toStringAsFixed(2) ?? '-'} USDT',
                   style: AppTheme.small()),
             if (trades.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Text("Открыты сделки:", style: AppTheme.title(color: AppTheme.up)),
+              const SizedBox(height: 20),
+              Text('Открыты сделки:', style: AppTheme.title(color: AppTheme.up)),
+              const SizedBox(height: 12),
               ...trades.map((t) => _tradeCard(t as Map<String, dynamic>))
             ],
             if (skipped.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Text("Пропущено:", style: AppTheme.small()),
-              ...skipped.map((s) => Text(
-                "${s['symbol']}: ${s['signal']} ${s['forecast_pct']}%",
-                style: AppTheme.small(color: AppTheme.muted),
+              const SizedBox(height: 20),
+              Text('Пропущено:', style: AppTheme.small()),
+              const SizedBox(height: 8),
+              ...skipped.map((s) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  '${s['symbol']}: ${s['signal']} ${s['forecast_pct']}%',
+                  style: AppTheme.small(color: AppTheme.muted),
+                ),
               )),
             ],
             if (errors.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Text("Ошибки:", style: AppTheme.title(color: AppTheme.down)),
-              ...errors.map((e) => Text("${e['symbol']}: ${e['error']}",
-                  style: AppTheme.small(color: AppTheme.down))),
+              const SizedBox(height: 20),
+              Text('Ошибки:', style: AppTheme.title(color: AppTheme.down)),
+              const SizedBox(height: 8),
+              ...errors.map((e) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text('${e['symbol']}: ${e['error']}',
+                    style: AppTheme.small(color: AppTheme.down)),
+              )),
             ],
             const SizedBox(height: 40),
           ],
@@ -253,10 +286,10 @@ class _MultiTradingScreenState extends State<MultiTradingScreen> {
   }
 
   Widget _tradeCard(Map<String, dynamic> t) {
-    final isLong = t["direction"] == "LONG";
+    final isLong = t['direction'] == 'LONG';
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppTheme.card,
         borderRadius: BorderRadius.circular(10),
@@ -267,12 +300,20 @@ class _MultiTradingScreenState extends State<MultiTradingScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(t["symbol"], style: AppTheme.title(color: AppTheme.accent)),
-              Text(t["direction"], style: AppTheme.title(color: isLong ? AppTheme.up : AppTheme.down)),
+              Expanded(
+                child: Text(
+                  t['symbol'],
+                  style: AppTheme.title(color: AppTheme.accent),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Text(t['direction'], style: AppTheme.title(color: isLong ? AppTheme.up : AppTheme.down)),
             ],
           ),
-          Text("qty: ${t['qty']} | плечо: ${t['leverage']}x", style: AppTheme.body()),
-          Text("TP: ${t['tp_price']} (${t['tp_pct']}%) | SL: ${t['sl_price']} (${t['sl_pct']}%)",
+          const SizedBox(height: 12),
+          Text('qty: ${t['qty']} | плечо: ${t['leverage']}x', style: AppTheme.body()),
+          const SizedBox(height: 6),
+          Text('TP: ${t['tp_price']} (${t['tp_pct']}%) | SL: ${t['sl_price']} (${t['sl_pct']}%)',
               style: AppTheme.small()),
         ],
       ),
@@ -291,32 +332,34 @@ class _MultiTradingScreenState extends State<MultiTradingScreen> {
   }
 
   Widget _intField(String label, int value, ValueChanged<int> onChanged) {
-    return TextField(
-      keyboardType: TextInputType.number,
-      decoration: InputDecoration(labelText: label),
-      controller: TextEditingController(text: value.toString()),
-      onChanged: (s) {
-        final v = int.tryParse(s);
-        if (v != null) onChanged(v);
-      },
+    final controller = TextEditingController(text: value.toString());
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TextField(
+        keyboardType: TextInputType.number,
+        decoration: InputDecoration(labelText: label),
+        controller: controller,
+        onChanged: (s) {
+          final v = int.tryParse(s);
+          if (v != null) onChanged(v);
+        },
+      ),
     );
   }
 
   Widget _doubleField(String label, double value, ValueChanged<double> onChanged) {
-    return TextField(
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      decoration: InputDecoration(labelText: label),
-      controller: TextEditingController(text: value.toString()),
-      onChanged: (s) {
-        final v = double.tryParse(s.replaceAll(",", "."));
-        if (v != null) onChanged(v);
-      },
+    final controller = TextEditingController(text: value.toString());
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TextField(
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: InputDecoration(labelText: label),
+        controller: controller,
+        onChanged: (s) {
+          final v = double.tryParse(s.replaceAll(',', '.'));
+          if (v != null) onChanged(v);
+        },
+      ),
     );
-  }
-
-  @override
-  void dispose() {
-    _symbolsCtrl.dispose();
-    super.dispose();
   }
 }

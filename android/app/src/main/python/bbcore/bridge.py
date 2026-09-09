@@ -9,6 +9,7 @@ from bbcore import auth
 from bbcore import config
 from bbcore import analysis
 from bbcore import auto_trading
+from bbcore import prices
 
 # Папка для локальных данных задаётся из Kotlin (filesDir приложения)
 _DATA_DIR = None
@@ -231,6 +232,13 @@ def get_price(exchange: str, symbol: str, api_key: str = "", api_secret: str = "
         return {"ok": False, "error": str(e)}
 
 
+def get_all_prices(base: str, quote: str = "USDT"):
+    try:
+        return prices.get_all_prices(base, quote)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def search_pattern(exchange: str, symbol: str, interval: str, pattern_length: int = 60,
                    forecast_horizon: int = 5, top_n: int = 5,
                    min_signal_threshold: float = 0.0,
@@ -319,6 +327,7 @@ _METHODS = {
     "set_github_token": set_github_token,
     "get_symbols": get_symbols,
     "get_price": get_price,
+    "get_all_prices": get_all_prices,
     "search_pattern": search_pattern,
     "multi_pattern_search": multi_pattern_search,
     "run_trading_cycle": run_trading_cycle,
