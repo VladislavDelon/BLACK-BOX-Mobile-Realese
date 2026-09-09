@@ -1,0 +1,390 @@
+# exchange_api.py
+# Подключение к биржам. Binance Futures + MEXC Futures.
+
+import json
+import time
+import hmac
+import hashlib
+import urllib.parse
+from decimal import Decimal, ROUND_DOWN
+
+import requests
+
+
+class ExchangeError(Exception):
+    pass
+
+
+class BinanceAPI:
+    """Binance USD-M Futures API."""
+    supports_embedded_tp_sl = False
+
+    def __init__(self, api_key: str, api_secret: str, testnet: bool = False):
+        self.api_key = api_key.strip()
+        self.api_secret = api_secret.strip()
+        self.testnet = testnet
+        self.base_url = "https://testnet.binancefuture.com" if testnet else "https://fapi.binance.com"
+        self._filters = {}
+
+    def _signature(self, query: str) -> str:
+        return hmac.new(
+            self.api_secret.encode("utf-8"),
+            query.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+
+    def _get(self, path: str, params: dict = None, signed: bool = False) -> dict:
+        params = params or {}
+        if signed:
+            params["timestamp"] = int(time.time() * 1000)
+            params["recvWindow"] = 10000
+        query = urllib.parse.urlencode(params)
+        if signed:
+            query += f"&signature={self._signature(query)}"
+        url = f"{self.base_url}{path}?{query}"
+        headers = {"X-MBX-APIKEY": self.api_key}
+        r = requests.get(url, headers=headers, timeout=15)
+        return self._handle(r)
+
+    def _post(self, path: str, params: dict = None, signed: bool = True) -> dict:
+        params = params or {}
+        if signed:
+            params["timestamp"] = int(time.time() * 1000)
+            params["recvWindow"] = 10000
+        query = urllib.parse.urlencode(params)
+        if signed:
+            query += f"&signature={self._signature(query)}"
+        url = f"{self.base_url}{path}?{query}"
+        headers = {"X-MBX-APIKEY": self.api_key}
+        r = requests.post(url, headers=headers, timeout=15)
+        return self._handle(r)
+
+    def _handle(self, r) -> dict:
+        try:
+            data = r.json()
+        except Exception:
+            data = {"_raw": r.text}
+        if r.status_code >= 400:
+            msg = data.get("msg", r.text) if isinstance(data, dict) else r.text
+            raise ExchangeError(f"Binance API error {r.status_code}: {msg}")
+        return data
+
+    def test_connection(self) -> bool:
+        try:
+            self._get("/fapi/v2/account", signed=True)
+            return True
+        except Exception:
+            return False
+
+    def get_balance(self, asset: str = "USDT") -> float:
+        data = self._get("/fapi/v2/balance", signed=True)
+        for b in data:
+            if b.get("asset") == asset:
+                return float(b.get("availableBalance", 0))
+        return 0.0
+
+    def _load_filters(self, symbol: str):
+        if symbol in self._filters:
+            return
+        info = requests.get(f"{self.base_url}/fapi/v1/exchangeInfo", timeout=15).json()
+        for s in info.get("symbols", []):
+            if s["symbol"] == symbol:
+                filters = {}
+                for f in s.get("filters", []):
+                    if f["filterType"] == "LOT_SIZE":
+                        filters["step"] = float(f["stepSize"])
+                        filters["min_qty"] = float(f["minQty"])
+                    elif f["filterType"] == "PRICE_FILTER":
+                        filters["tick"] = float(f["tickSize"])
+                    elif f["filterType"] == "MIN_NOTIONAL":
+                        filters["min_notional"] = float(f.get("notional", f.get("minNotional", 0)))
+                self._filters[symbol] = filters
+                return
+        self._filters[symbol] = {}
+
+    def round_qty(self, symbol: str, qty: float) -> float:
+        self._load_filters(symbol)
+        step = self._filters.get(symbol, {}).get("step", 0.001)
+        d = Decimal(str(step))
+        q = Decimal(str(qty))
+        rounded = q.quantize(d, rounding=ROUND_DOWN)
+        return float(rounded)
+
+    def round_price(self, symbol: str, price: float) -> float:
+        self._load_filters(symbol)
+        tick = self._filters.get(symbol, {}).get("tick", 0.01)
+        d = Decimal(str(tick))
+        p = Decimal(str(price))
+        return float(p.quantize(d, rounding=ROUND_DOWN))
+
+    def set_leverage(self, symbol: str, leverage: int) -> dict:
+        return self._post(
+            "/fapi/v1/leverage",
+            {"symbol": symbol, "leverage": leverage},
+            signed=True,
+        )
+
+    def place_market_order(self, symbol: str, side: str, quantity: float) -> dict:
+        """side: 'BUY' or 'SELL' (one-way mode). quantity already rounded."""
+        return self._post(
+            "/fapi/v1/order",
+            {
+                "symbol": symbol,
+                "side": side,
+                "type": "MARKET",
+                "quantity": f"{quantity:.10f}".rstrip("0").rstrip("."),
+            },
+            signed=True,
+        )
+
+    def place_stop_order(self, symbol: str, side: str, stop_price: float, close_position: bool = True) -> dict:
+        """STOP_MARKET для SL."""
+        return self._post(
+            "/fapi/v1/order",
+            {
+                "symbol": symbol,
+                "side": side,
+                "type": "STOP_MARKET",
+                "stopPrice": f"{stop_price:.10f}".rstrip("0").rstrip("."),
+                "closePosition": "true" if close_position else "false",
+            },
+            signed=True,
+        )
+
+    def place_take_profit_order(self, symbol: str, side: str, stop_price: float, close_position: bool = True) -> dict:
+        """TAKE_PROFIT_MARKET для TP."""
+        return self._post(
+            "/fapi/v1/order",
+            {
+                "symbol": symbol,
+                "side": side,
+                "type": "TAKE_PROFIT_MARKET",
+                "stopPrice": f"{stop_price:.10f}".rstrip("0").rstrip("."),
+                "closePosition": "true" if close_position else "false",
+            },
+            signed=True,
+        )
+
+
+class MEXCAPI:
+    """MEXC Futures API (contract.mexc.com)."""
+
+    supports_embedded_tp_sl = True
+
+    def __init__(self, api_key: str, api_secret: str, testnet: bool = False):
+        self.api_key = api_key.strip()
+        self.api_secret = api_secret.strip()
+        self.testnet = testnet
+        self.base_url = "https://contract.mexc.com"
+        self._filters = {}
+
+    # --------------------------------------------------------
+    @staticmethod
+    def _symbol(symbol: str) -> str:
+        """Приводит символ к формату MEXC: BTCUSDT -> BTC_USDT."""
+        s = symbol.upper().replace("/", "").replace("-", "")
+        if "_" in s:
+            return s
+        for q in ("USDT", "USDC", "BUSD", "BTC", "ETH", "BNB"):
+            if s.endswith(q) and len(s) > len(q):
+                return f"{s[:-len(q)]}_{q}"
+        return s
+
+    def _sign(self, param_str: str) -> str:
+        return hmac.new(
+            self.api_secret.encode("utf-8"),
+            param_str.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+
+    def _signed_headers(self, param_str: str) -> dict:
+        ts = int(time.time() * 1000)
+        sign_str = f"{self.api_key}{ts}{param_str}"
+        return {
+            "ApiKey": self.api_key,
+            "Request-Time": str(ts),
+            "Signature": self._sign(sign_str),
+            "Content-Type": "application/json",
+        }
+
+    def _get(self, path: str, params: dict = None, signed: bool = False) -> dict:
+        params = params or {}
+        if signed:
+            query = urllib.parse.urlencode(sorted(params.items()))
+            headers = self._signed_headers(query)
+            url = f"{self.base_url}{path}"
+            if query:
+                url += f"?{query}"
+        else:
+            headers = {"User-Agent": "Mozilla/5.0"}
+            url = f"{self.base_url}{path}"
+            if params:
+                url += f"?{urllib.parse.urlencode(params)}"
+        r = requests.get(url, headers=headers, timeout=15)
+        return self._handle(r)
+
+    def _post(self, path: str, params: dict = None, signed: bool = True) -> dict:
+        params = params or {}
+        body = json.dumps(params, separators=(",", ":"))
+        if signed:
+            headers = self._signed_headers(body)
+        else:
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0",
+            }
+        r = requests.post(f"{self.base_url}{path}", data=body, headers=headers, timeout=15)
+        return self._handle(r)
+
+    def _handle(self, r) -> dict:
+        try:
+            data = r.json()
+        except Exception:
+            data = {"_raw": r.text}
+        if r.status_code >= 400 or (isinstance(data, dict) and data.get("success") is False):
+            msg = data.get("message") or data.get("msg") or r.text
+            raise ExchangeError(f"MEXC API error {r.status_code}: {msg}")
+        return data
+
+    # --------------------------------------------------------
+    def test_connection(self) -> bool:
+        try:
+            data = self._get("/api/v1/private/account/assets", signed=True)
+            return bool(data.get("success")) and data.get("code") == 0
+        except Exception:
+            return False
+
+    def get_balance(self, asset: str = "USDT") -> float:
+        data = self._get("/api/v1/private/account/assets", signed=True)
+        for b in data.get("data", []):
+            if b.get("currency") == asset:
+                return float(b.get("availableBalance", 0))
+        return 0.0
+
+    def _load_filters(self, symbol: str):
+        mexc = self._symbol(symbol)
+        if mexc in self._filters:
+            return
+        try:
+            r = requests.get(
+                f"{self.base_url}/api/v1/contract/detail?symbol={mexc}",
+                timeout=15,
+            )
+            d = r.json().get("data", {})
+            if isinstance(d, list) and d:
+                d = d[0]
+            if not isinstance(d, dict):
+                d = {}
+        except Exception:
+            d = {}
+        self._filters[mexc] = {
+            "contractSize": float(d.get("contractSize", 1) or 1),
+            "volScale": int(d.get("volScale", 0) or 0),
+            "priceUnit": float(d.get("priceUnit", 0.01) or 0.01),
+            "minVol": float(d.get("minVol", 1) or 1),
+            "maxVol": float(d.get("maxVol", 999999) or 999999),
+            "minLeverage": int(d.get("minLeverage", 1) or 1),
+            "maxLeverage": int(d.get("maxLeverage", 100) or 100),
+        }
+
+    def round_qty(self, symbol: str, qty: float) -> float:
+        """Возвращает количество в контрактах (MEXC vol)."""
+        self._load_filters(symbol)
+        mexc = self._symbol(symbol)
+        f = self._filters.get(mexc, {})
+        contract_size = float(f.get("contractSize", 1.0) or 1.0)
+        vol_scale = int(f.get("volScale", 0) or 0)
+        min_vol = float(f.get("minVol", 1) or 1)
+
+        vol = qty / contract_size if contract_size > 0 else qty
+        if vol_scale > 0:
+            step = 10 ** (-vol_scale)
+        else:
+            step = 1
+        d = Decimal(str(step))
+        q = Decimal(str(vol))
+        vol = float(q.quantize(d, rounding=ROUND_DOWN))
+        if vol < min_vol:
+            return 0.0
+        return vol
+
+    def round_price(self, symbol: str, price: float) -> float:
+        self._load_filters(symbol)
+        mexc = self._symbol(symbol)
+        tick = float(self._filters.get(mexc, {}).get("priceUnit", 0.01) or 0.01)
+        d = Decimal(str(tick))
+        p = Decimal(str(price))
+        return float(p.quantize(d, rounding=ROUND_DOWN))
+
+    def set_leverage(self, symbol: str, leverage: int) -> dict:
+        # Плечо задаётся прямо в ордере (order/create)
+        return {}
+
+    def _last_price(self, symbol: str) -> float:
+        try:
+            r = requests.get(
+                f"{self.base_url}/api/v1/contract/ticker?symbol={symbol}",
+                timeout=15,
+            )
+            return float(r.json().get("data", {}).get("lastPrice", 0))
+        except Exception:
+            return 0.0
+
+    def place_market_order(
+        self,
+        symbol: str,
+        side: str,
+        quantity: float,
+        leverage: int = 1,
+        stop_loss: float = None,
+        take_profit: float = None,
+    ) -> dict:
+        """side: 'BUY' or 'SELL'. quantity уже в контрактах (vol)."""
+        mexc = self._symbol(symbol)
+        vol = quantity
+        f = self._filters.get(mexc, {})
+        if int(f.get("volScale", 0)) == 0:
+            vol = int(quantity)
+
+        if side.upper() == "BUY":
+            side_code = 1  # open long
+        else:
+            side_code = 3  # open short
+
+        price = self._last_price(mexc)
+        payload = {
+            "symbol": mexc,
+            "price": price,
+            "vol": vol,
+            "leverage": int(leverage),
+            "side": side_code,
+            "type": 5,        # market
+            "openType": 2,    # cross
+            "positionMode": 2,  # one-way
+        }
+        if stop_loss is not None:
+            payload["stopLossPrice"] = self.round_price(mexc, stop_loss)
+        if take_profit is not None:
+            payload["takeProfitPrice"] = self.round_price(mexc, take_profit)
+        return self._post("/api/v1/private/order/create", payload, signed=True)
+
+    def place_stop_order(self, *args, **kwargs) -> dict:
+        # TP/SL задаются в основном ордере для MEXC
+        return {}
+
+    def place_take_profit_order(self, *args, **kwargs) -> dict:
+        # TP/SL задаются в основном ордере для MEXC
+        return {}
+
+
+# ==========================================================
+# Обёртка
+# ==========================================================
+
+def get_api(exchange: str, api_key: str, api_secret: str, **kwargs):
+    exchange = exchange.lower().replace(" ", "")
+    if exchange == "binancefutures" or exchange == "binance":
+        return BinanceAPI(api_key, api_secret, kwargs.get("testnet", False))
+    if exchange == "mexcfutures" or exchange == "mexc":
+        return MEXCAPI(api_key, api_secret, kwargs.get("testnet", False))
+    raise ExchangeError(f"Биржа '{exchange}' пока не поддерживается.")
