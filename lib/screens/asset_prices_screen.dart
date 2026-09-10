@@ -84,7 +84,7 @@ class _AssetPricesScreenState extends State<AssetPricesScreen> {
                 children: [
                   Text('Настройки', style: AppTheme.title()),
                   const SizedBox(height: 16),
-                  SymbolAutocompleteField(
+                  SymbolDropdownField(
                     label: 'Монета',
                     value: _symbol,
                     symbols: _symbols,
@@ -184,7 +184,7 @@ class _AssetPricesScreenState extends State<AssetPricesScreen> {
               children: [
                 Text('$exchange $market', style: AppTheme.title(color: AppTheme.accent)),
                 const SizedBox(height: 8),
-                Text('Ошибка: ${p['error']}', style: AppTheme.body(color: AppTheme.down)),
+                Text('Временно данных нет', style: AppTheme.body(color: AppTheme.muted)),
               ],
             ),
     );

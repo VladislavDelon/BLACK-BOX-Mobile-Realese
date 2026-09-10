@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../app_theme.dart';
 import '../core/core_call.dart';
 import '../services/symbols_service.dart';
@@ -12,12 +13,14 @@ class PatternSearchScreen extends StatefulWidget {
 }
 
 class _PatternSearchScreenState extends State<PatternSearchScreen> {
-  String _symbol = 'BTCUSDT';
-  String _interval = '15m';
-  int _patternLength = 60;
-  int _forecastHorizon = 5;
-  int _topN = 5;
-  double _threshold = 0.0;
+  String _symbol = 'SOLUSDT';
+  String _interval = '1m';
+  int _patternLength = 600;
+  int _forecastHorizon = 15;
+  int _topN = 16;
+  double _threshold = 12.0;
+  double _soundThreshold = 1.5;
+  int _autoAnalysisInterval = 60;
   String _exchange = 'Binance Futures';
 
   bool _busy = false;
@@ -25,7 +28,8 @@ class _PatternSearchScreenState extends State<PatternSearchScreen> {
   String _status = '';
   List<String> _symbols = [];
 
-  final _intervals = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '1d'];
+  final _intervals = ['1m (1 минута)', '5m (5 минут)', '15m (15 минут)', '30m (30 минут)', '1h (1 час)', '2h (2 часа)', '4h (4 часа)', '1d (1 день)'];
+  final _soundThresholds = ['0.5', '1.0', '1.5', '2.0', '2.5', '3.0', '4.0', '5.0'];
 
   @override
   void initState() {
@@ -36,6 +40,10 @@ class _PatternSearchScreenState extends State<PatternSearchScreen> {
   Future<void> _loadSymbols() async {
     final list = await SymbolsService.getSymbols();
     setState(() => _symbols = list);
+  }
+
+  String _parseInterval(String label) {
+    return label.split(' ').first;
   }
 
   Future<void> _run() async {
@@ -53,7 +61,7 @@ class _PatternSearchScreenState extends State<PatternSearchScreen> {
       final res = await coreCall('search_pattern', {
         'exchange': _exchange,
         'symbol': symbol,
-        'interval': _interval,
+        'interval': _parseInterval(_interval),
         'pattern_length': _patternLength,
         'forecast_horizon': _forecastHorizon,
         'top_n': _topN,
@@ -64,6 +72,10 @@ class _PatternSearchScreenState extends State<PatternSearchScreen> {
           _result = res;
           _status = '';
         });
+        final forecast = (res['forecast_return_pct'] as num?)?.toDouble() ?? 0.0;
+        if (forecast.abs() >= _soundThreshold) {
+          SystemSound.play(SystemSoundType.alert);
+        }
       } else {
         setState(() => _status = 'Ошибка: ${res['error']}');
       }
@@ -90,7 +102,7 @@ class _PatternSearchScreenState extends State<PatternSearchScreen> {
                   Text('Настройки', style: AppTheme.title()),
                   const SizedBox(height: 16),
                   SymbolDropdownField(
-                    label: 'Символ',
+                    label: 'Монета',
                     value: _symbol,
                     symbols: _symbols,
                     onSelected: (s) => setState(() => _symbol = s),
@@ -100,17 +112,20 @@ class _PatternSearchScreenState extends State<PatternSearchScreen> {
                     value: _interval,
                     dropdownColor: AppTheme.card,
                     style: const TextStyle(color: AppTheme.text),
-                    decoration: const InputDecoration(labelText: 'Интервал'),
+                    decoration: const InputDecoration(labelText: 'Интервал свечей'),
                     items: _intervals
                         .map((i) => DropdownMenuItem(value: i, child: Text(i)))
                         .toList(),
                     onChanged: (v) => setState(() => _interval = v!),
                   ),
                   const SizedBox(height: 12),
-                  _intField('Длина паттерна', _patternLength, (v) => _patternLength = v),
-                  _intField('Горизонт прогноза', _forecastHorizon, (v) => _forecastHorizon = v),
-                  _intField('TOP-N похожих', _topN, (v) => _topN = v),
-                  _doubleField('Порог сигнала (%)', _threshold, (v) => _threshold = v),
+                  _intField('Длина паттерна (свечей)', _patternLength, (v) => _patternLength = v),
+                  _intField('Время прогноза (свечей)', _forecastHorizon, (v) => _forecastHorizon = v),
+                  _intField('Количество паттернов', _topN, (v) => _topN = v),
+                  _doubleField('Порог сильного сигнала (%)', _threshold, (v) => _threshold = v),
+                  const SizedBox(height: 12),
+                  _doubleField('Процент срабатывания сигнала (%)', _soundThreshold, (v) => _soundThreshold = v),
+                  _intField('Интервал автоанализа (сек)', _autoAnalysisInterval, (v) => _autoAnalysisInterval = v),
                   const SizedBox(height: 20),
                   SizedBox(
                     width: double.infinity,

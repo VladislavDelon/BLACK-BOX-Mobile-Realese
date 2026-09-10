@@ -1,6 +1,7 @@
 # prices.py — сравнение цен на разных биржах (cross-prices).
 # Порт с десктопного cross_prices_app.py.
 
+import concurrent.futures
 import requests
 
 
@@ -146,7 +147,10 @@ def _fetch_one(ex, base, quote):
 
 def get_all_prices(base: str, quote: str = "USDT"):
     """Возвращает список цен со всех поддерживаемых бирж."""
-    out = []
-    for ex in EXCHANGES:
-        out.append(_fetch_one(ex, base, quote))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(EXCHANGES)) as executor:
+        futures = [executor.submit(_fetch_one, ex, base, quote) for ex in EXCHANGES]
+        out = [f.result() for f in concurrent.futures.as_completed(futures)]
+    # Сортируем по исходному порядку бирж для стабильности.
+    order = {ex["name"]: i for i, ex in enumerate(EXCHANGES)}
+    out.sort(key=lambda p: order.get(p["exchange"], 999))
     return {"ok": True, "base": base.upper(), "quote": quote.upper(), "prices": out}

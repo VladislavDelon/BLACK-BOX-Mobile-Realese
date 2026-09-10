@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../app_theme.dart';
 import '../core/core_call.dart';
 import '../services/symbols_service.dart';
@@ -12,14 +13,15 @@ class MultiPatternSearchScreen extends StatefulWidget {
 }
 
 class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
-  List<String> _symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
-  String _interval = '15m';
-  int _patternLength = 60;
-  int _forecastHorizon = 5;
-  int _topN = 5;
-  double _threshold = 0.0;
+  List<String> _symbols = ['SOLUSDT', 'BTCUSDT', 'ETHUSDT'];
+  String _interval = '1m';
+  int _patternLength = 600;
+  int _forecastHorizon = 15;
+  int _topN = 16;
+  double _threshold = 12.0;
+  double _soundThreshold = 1.5;
   String _exchange = 'Binance Futures';
-  bool _skipNeutral = true;
+  bool _skipNeutral = false;
 
   bool _busy = false;
   List<dynamic>? _results;
@@ -27,7 +29,7 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
   String _status = '';
   List<String> _allSymbols = [];
 
-  final _intervals = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '1d'];
+  final _intervals = ['1m (1 минута)', '5m (5 минут)', '15m (15 минут)', '30m (30 минут)', '1h (1 час)', '2h (2 часа)', '4h (4 часа)', '1d (1 день)'];
 
   @override
   void initState() {
@@ -38,6 +40,10 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
   Future<void> _loadSymbols() async {
     final list = await SymbolsService.getSymbols();
     setState(() => _allSymbols = list);
+  }
+
+  String _parseInterval(String label) {
+    return label.split(' ').first;
   }
 
   Future<void> _run() async {
@@ -51,31 +57,89 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
       _results = null;
       _errors = null;
     });
+    _openProgressSheet();
     try {
-      final res = await coreCall('multi_pattern_search', {
-        'symbols': _symbols,
-        'exchange': _exchange,
-        'interval': _interval,
-        'pattern_length': _patternLength,
-        'forecast_horizon': _forecastHorizon,
-        'top_n': _topN,
-        'min_signal_threshold': _threshold,
-        'skip_neutral': _skipNeutral,
-      });
-      if (res['ok'] == true) {
-        setState(() {
-          _results = res['results'] as List<dynamic>?;
-          _errors = res['errors'] as List<dynamic>?;
-          _status = '';
+      final results = <Map<String, dynamic>>[];
+      final errors = <Map<String, dynamic>>[];
+      for (final symbol in _symbols) {
+        if (!mounted) break;
+        _updateProgress(symbol, 'Загрузка...', null);
+        final res = await coreCall('search_pattern', {
+          'exchange': _exchange,
+          'symbol': symbol,
+          'interval': _parseInterval(_interval),
+          'pattern_length': _patternLength,
+          'forecast_horizon': _forecastHorizon,
+          'top_n': _topN,
+          'min_signal_threshold': _threshold,
         });
-      } else {
-        setState(() => _status = 'Ошибка: ${res['error']}');
+        if (res['ok'] == true) {
+          results.add(res);
+          final forecast = (res['forecast_return_pct'] as num?)?.toDouble() ?? 0.0;
+          if (forecast.abs() >= _soundThreshold) {
+            SystemSound.play(SystemSoundType.alert);
+          }
+          _updateProgress(
+            symbol,
+            '${res['signal']} ${res['forecast_return_pct']}%',
+            res['signal']?.toString() ?? '',
+          );
+        } else {
+          errors.add({'symbol': symbol, 'error': res['error']});
+          _updateProgress(symbol, 'Ошибка: ${res['error']}', 'ERROR');
+        }
+      }
+      results.sort((a, b) {
+        final as_ = (a['strength'] as num?)?.toDouble() ?? 0.0;
+        final bs = (b['strength'] as num?)?.toDouble() ?? 0.0;
+        if (as_ != bs) return bs.compareTo(as_);
+        final af = (a['forecast_return_pct'] as num?)?.toDouble().abs() ?? 0.0;
+        final bf = (b['forecast_return_pct'] as num?)?.toDouble().abs() ?? 0.0;
+        return bf.compareTo(af);
+      });
+      if (_skipNeutral) {
+        results.removeWhere((r) => r['signal'] == 'NEUTRAL');
+      }
+      setState(() {
+        _results = results;
+        _errors = errors;
+        _status = '';
+      });
+      if (mounted) {
+        Navigator.of(context).pop();
       }
     } catch (e) {
       setState(() => _status = 'Ошибка канала: $e');
+      if (mounted) Navigator.of(context).pop();
     } finally {
       setState(() => _busy = false);
     }
+  }
+
+  final List<Map<String, dynamic>> _progressLog = [];
+
+  void _updateProgress(String symbol, String status, String? signal) {
+    setState(() {
+      final idx = _progressLog.indexWhere((e) => e['symbol'] == symbol);
+      if (idx >= 0) {
+        _progressLog[idx] = {'symbol': symbol, 'status': status, 'signal': signal};
+      } else {
+        _progressLog.add({'symbol': symbol, 'status': status, 'signal': signal});
+      }
+    });
+    _progressSheetKey.currentState?.refresh();
+  }
+
+  final GlobalKey<_ProgressSheetState> _progressSheetKey = GlobalKey();
+
+  void _openProgressSheet() {
+    _progressLog.clear();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.card,
+      builder: (ctx) => _ProgressSheet(key: _progressSheetKey, log: _progressLog),
+    );
   }
 
   @override
@@ -103,21 +167,23 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
                     value: _interval,
                     dropdownColor: AppTheme.card,
                     style: const TextStyle(color: AppTheme.text),
-                    decoration: const InputDecoration(labelText: 'Интервал'),
+                    decoration: const InputDecoration(labelText: 'Интервал свечей'),
                     items: _intervals
                         .map((i) => DropdownMenuItem(value: i, child: Text(i)))
                         .toList(),
                     onChanged: (v) => setState(() => _interval = v!),
                   ),
                   const SizedBox(height: 12),
-                  _intField('Длина паттерна', _patternLength, (v) => _patternLength = v),
-                  _intField('Горизонт прогноза', _forecastHorizon, (v) => _forecastHorizon = v),
-                  _intField('TOP-N похожих', _topN, (v) => _topN = v),
-                  _doubleField('Порог сигнала (%)', _threshold, (v) => _threshold = v),
+                  _intField('Длина паттерна (свечей)', _patternLength, (v) => _patternLength = v),
+                  _intField('Время прогноза (свечей)', _forecastHorizon, (v) => _forecastHorizon = v),
+                  _intField('Количество паттернов', _topN, (v) => _topN = v),
+                  _doubleField('Порог сильного сигнала (%)', _threshold, (v) => _threshold = v),
+                  _doubleField('Процент срабатывания сигнала (%)', _soundThreshold, (v) => _soundThreshold = v),
                   CheckboxListTile(
                     value: _skipNeutral,
                     onChanged: (v) => setState(() => _skipNeutral = v ?? true),
                     title: const Text('Пропускать NEUTRAL'),
+                    subtitle: const Text('Не показывать пары без сильного сигнала (LONG/SHORT)'),
                     controlAffinity: ListTileControlAffinity.leading,
                     contentPadding: EdgeInsets.zero,
                   ),
@@ -252,6 +318,55 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
           final v = double.tryParse(s.replaceAll(',', '.'));
           if (v != null) onChanged(v);
         },
+      ),
+    );
+  }
+}
+
+class _ProgressSheet extends StatefulWidget {
+  final List<Map<String, dynamic>> log;
+  const _ProgressSheet({super.key, required this.log});
+
+  @override
+  State<_ProgressSheet> createState() => _ProgressSheetState();
+}
+
+class _ProgressSheetState extends State<_ProgressSheet> {
+  void refresh() => setState(() {});
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.3,
+      maxChildSize: 0.9,
+      builder: (_, scrollCtrl) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            Text('Анализ пар', style: AppTheme.title()),
+            const SizedBox(height: 16),
+            Expanded(
+              child: ListView.builder(
+                controller: scrollCtrl,
+                itemCount: widget.log.length,
+                itemBuilder: (_, i) {
+                  final e = widget.log[i];
+                  final signal = e['signal']?.toString() ?? '';
+                  Color c = AppTheme.muted;
+                  if (signal == 'LONG') c = AppTheme.up;
+                  if (signal == 'SHORT') c = AppTheme.down;
+                  if (signal == 'ERROR') c = AppTheme.down;
+                  return ListTile(
+                    dense: true,
+                    title: Text(e['symbol']?.toString() ?? '', style: AppTheme.body()),
+                    subtitle: Text(e['status']?.toString() ?? '', style: AppTheme.small(color: c)),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
