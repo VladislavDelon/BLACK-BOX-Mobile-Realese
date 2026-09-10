@@ -344,6 +344,7 @@ _METHODS = {
     "get_active": get_active,
     "delete_account": delete_account,
     "get_version": get_version,
+    "get_news": get_news,
     "check_update": check_update,
     "get_auth_state": get_auth_state,
     "load_registration": load_registration,
