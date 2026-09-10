@@ -143,6 +143,10 @@ def get_version():
     return {"ok": True, "version": config.VERSION}
 
 
+def get_news():
+    return auth.get_news(config.VERSION)
+
+
 def check_update():
     try:
         has_update, new_version, download_url = auth.check_for_update(config.VERSION)

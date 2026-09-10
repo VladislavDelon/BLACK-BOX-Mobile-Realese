@@ -737,3 +737,35 @@ def update_info(current_version=None):
         "download_url": download_url or "",
         "current_version": current_version or get_current_version(),
     }
+
+
+def get_news(current_version=None):
+    """Возвращает описание последнего релиза (что нового) для Flutter."""
+    if current_version is None:
+        current_version = get_current_version()
+    try:
+        release = _latest_release_json()
+        if not release:
+            return {
+                "ok": False,
+                "error": "Не удалось загрузить новости",
+                "current_version": current_version,
+            }
+        tag = release.get("tag_name", "") or ""
+        version = tag[1:] if tag.startswith("v") else tag
+        return {
+            "ok": True,
+            "version": version,
+            "tag": tag,
+            "name": release.get("name") or "",
+            "body": release.get("body") or "",
+            "published_at": release.get("published_at") or "",
+            "current_version": current_version,
+        }
+    except Exception as e:
+        print(f"[news] {e}")
+        return {
+            "ok": False,
+            "error": str(e),
+            "current_version": current_version,
+        }

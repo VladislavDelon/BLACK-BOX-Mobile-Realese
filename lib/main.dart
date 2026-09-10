@@ -8,6 +8,7 @@ import 'screens/pattern_search_screen.dart';
 import 'screens/multi_pattern_search_screen.dart';
 import 'screens/multi_trading_screen.dart';
 import 'screens/asset_prices_screen.dart';
+import 'screens/news_screen.dart';
 
 void main() {
   runApp(const BlackBoxApp());
@@ -32,6 +33,7 @@ class BlackBoxApp extends StatelessWidget {
         '/multi_pattern': (_) => const MultiPatternSearchScreen(),
         '/multi_trading': (_) => const MultiTradingScreen(),
         '/asset_prices': (_) => const AssetPricesScreen(),
+        '/news': (_) => const NewsScreen(),
       },
     );
   }
