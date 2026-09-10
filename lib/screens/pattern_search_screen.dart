@@ -4,6 +4,7 @@ import '../app_theme.dart';
 import '../core/core_call.dart';
 import '../services/symbols_service.dart';
 import '../widgets/symbol_picker.dart';
+import '../widgets/help_button.dart';
 
 class PatternSearchScreen extends StatefulWidget {
   const PatternSearchScreen({super.key});
@@ -14,11 +15,11 @@ class PatternSearchScreen extends StatefulWidget {
 
 class _PatternSearchScreenState extends State<PatternSearchScreen> {
   String _symbol = 'SOLUSDT';
-  String _interval = '1m';
-  int _patternLength = 600;
-  int _forecastHorizon = 15;
-  int _topN = 16;
-  double _threshold = 12.0;
+  String _interval = '1m (1 минута)';
+  int _patternLength = 400;
+  int _forecastHorizon = 60;
+  int _topN = 10;
+  double _threshold = 7.0;
   double _soundThreshold = 1.5;
   int _autoAnalysisInterval = 60;
   String _exchange = 'Binance Futures';
@@ -100,6 +101,15 @@ class _PatternSearchScreenState extends State<PatternSearchScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Настройки', style: AppTheme.title()),
+                  const SizedBox(height: 8),
+                  HelpButton(
+                    title: 'Поиск по паттернам',
+                    text: '1. Выберите монету.\n'
+                        '2. Оставьте настройки по умолчанию — прогноз на 1 час.\n'
+                        '3. Нажмите «Запустить анализ».\n\n'
+                        'Сила сигнала — сколько паттернов совпало по направлению. '
+                        'Сигнал считается сильным, если количество совпадений ≥ «Порог сильного сигнала».',
+                  ),
                   const SizedBox(height: 16),
                   SymbolDropdownField(
                     label: 'Монета',

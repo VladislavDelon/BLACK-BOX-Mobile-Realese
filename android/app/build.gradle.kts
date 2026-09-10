@@ -52,6 +52,8 @@ android {
             version = "3.13"
             pip {
                 install("requests")
+                install("numpy")
+                install("pandas")
             }
         }
     }

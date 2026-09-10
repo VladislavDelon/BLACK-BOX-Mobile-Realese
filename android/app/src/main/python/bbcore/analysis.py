@@ -11,6 +11,7 @@ import time
 from datetime import datetime
 
 from bbcore import exchange_api
+from bbcore import desktop_analysis
 
 INTERVAL_MAP = {
     "1m": 60, "3m": 180, "5m": 300, "15m": 900,
@@ -61,104 +62,110 @@ def _format_time(ms):
     return datetime.fromtimestamp(ms / 1000).strftime("%Y-%m-%d %H:%M")
 
 
-def search_pattern(exchange, symbol, interval, pattern_length=60,
-                   forecast_horizon=5, top_n=5, min_signal_threshold=0.0,
+def _friendly_error(e):
+    err = str(e).lower()
+    if "timeout" in err:
+        return "Таймаут соединения. Проверьте интернет."
+    if "name" in err and "resolve" in err:
+        return "Нет соединения с интернетом."
+    if "max retries" in err:
+        return "Сеть временно недоступна."
+    if "certificate" in err or "ssl" in err:
+        return "Проблема с HTTPS-сертификатом."
+    if "no symbol" in err:
+        return "Символ не найден на бирже."
+    return "Временно данных нет"
+
+
+def _map_signal(res, min_threshold):
+    """Определяет LONG/SHORT/NEUTRAL и силу из результата десктопного анализа."""
+    if not res or not res.get("top_patterns"):
+        return "NEUTRAL", 0
+
+    sig_type = res.get("signal_type", "flat")
+    long_count = res.get("long_count", 0)
+    short_count = res.get("short_count", 0)
+    strength = res.get("strength", 0)
+
+    if sig_type == "long" and long_count >= min_threshold:
+        return "LONG", strength
+    if sig_type == "short" and short_count >= min_threshold:
+        return "SHORT", strength
+    return "NEUTRAL", strength
+
+
+def search_pattern(exchange, symbol, interval, pattern_length=400,
+                   forecast_horizon=15, top_n=10, min_signal_threshold=7,
                    api_key="", api_secret="", testnet=False):
     """
-    Запускает поиск паттерна.
+    Запускает поиск паттерна, идентичный десктопному.
     Возвращает dict с ok, signal, strength, current_price, matches, forecast.
     """
     try:
-        # Для анализа не нужны приватные ключи, но биржа может требовать объект.
-        api = exchange_api.get_api(exchange, api_key or "-", api_secret or "-", testnet=testnet)
-        klines = api.get_klines(symbol, interval, limit=1500)
+        res = desktop_analysis.run_analysis_job(
+            symbol=symbol,
+            top_n_patterns=top_n,
+            min_signal_threshold=min_signal_threshold,
+            show_all_signals=True,
+            lookback_window=pattern_length,
+            forecast_length=forecast_horizon,
+            interval=interval,
+        )
+        if res is None:
+            return {"ok": False, "error": "Не удалось загрузить данные"}
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        return {"ok": False, "error": _friendly_error(e)}
 
-    if len(klines) < pattern_length + forecast_horizon + top_n + 10:
-        return {
-            "ok": False,
-            "error": f"Недостаточно данных: {len(klines)} свечей. Нужно > {pattern_length + forecast_horizon + 10}.",
-        }
+    signal, strength = _map_signal(res, min_signal_threshold)
+    analyses = res.get("analyses", [])
+    top_patterns = res.get("top_patterns", [])
+    current_price = res.get("current_price", 0.0)
+    forecast_price = res.get("forecast_price", current_price)
+    forecast_return_pct = res.get("forecast_pct_change", 0.0)
 
-    closes = [c[4] for c in klines]
-    times = [c[0] for c in klines]
-    current_price = closes[-1]
+    # win_rate = доля большинства от общего числа найденных паттернов.
+    analyses_with_dir = [a for a in analyses if "forecast_direction" in a]
+    win_rate = strength / len(analyses_with_dir) if analyses_with_dir else 0.0
 
-    # Эталон — последние pattern_length свечей.
-    reference = _normalize(closes[-pattern_length:])
-
-    # Ищем похожие участки. Пропускаем последние pattern_length + forecast_horizon, чтобы смотреть "было дальше".
-    search_end = len(closes) - pattern_length - forecast_horizon
     matches = []
-    for i in range(0, search_end - pattern_length):
-        window = _normalize(closes[i:i + pattern_length])
-        dist = _cosine_distance(reference, window)
-        # Что было дальше.
-        fut_start = closes[i + pattern_length]
-        fut_end = closes[i + pattern_length + forecast_horizon - 1]
-        fut_return = (fut_end - fut_start) / fut_start if fut_start else 0.0
+    for (similarity, pattern, idx), analysis in zip(top_patterns, analyses):
+        if not analysis or "forecast_direction" not in analysis:
+            continue
         matches.append({
-            "index": i,
-            "time": _format_time(times[i]),
-            "distance": round(dist, 6),
-            "future_return": round(fut_return, 6),
-            "future_return_pct": round(fut_return * 100, 3),
-            "start_price": round(fut_start, 6),
-            "end_price": round(fut_end, 6),
+            "time": str(analysis.get("start_date", "")),
+            "distance": round(1.0 - float(similarity), 6),
+            "future_return_pct": round(float(analysis.get("forecast_pct_change", 0.0)), 3),
+            "start_price": round(float(analysis.get("forecast_start_price", 0.0)), 6),
+            "end_price": round(float(analysis.get("forecast_end_price", 0.0)), 6),
         })
-
-    matches.sort(key=lambda x: x["distance"])
-    top = matches[:top_n]
-    if not top:
-        return {"ok": False, "error": "Не найдено похожих паттернов."}
-
-    returns = [m["future_return"] for m in top]
-    avg_return = _mean(returns)
-    win_rate = sum(1 for r in returns if r > 0) / len(returns)
-
-    # Сигнал.
-    if avg_return > min_signal_threshold / 100.0:
-        signal = "LONG"
-    elif avg_return < -min_signal_threshold / 100.0:
-        signal = "SHORT"
-    else:
-        signal = "NEUTRAL"
-
-    # Сила 0-100: чем однороднее топ и больше средний модуль, тем сильнее.
-    abs_returns = [abs(r) for r in returns]
-    strength = min(100, int(_mean(abs_returns) * 100 * 2 + win_rate * 50))
-
-    # Прогноз: средняя цена через forecast_horizon свечей.
-    if avg_return != 0:
-        forecast_price = current_price * (1 + avg_return)
-    else:
-        forecast_price = current_price
 
     return {
         "ok": True,
         "symbol": symbol,
         "interval": interval,
-        "current_price": round(current_price, 6),
-        "forecast_price": round(forecast_price, 6),
-        "forecast_return_pct": round(avg_return * 100, 3),
+        "current_price": round(float(current_price), 6),
+        "forecast_price": round(float(forecast_price), 6),
+        "forecast_return_pct": round(float(forecast_return_pct), 3),
         "signal": signal,
-        "strength": strength,
+        "strength": int(strength),
+        "strength_max": int(res.get("top_n_patterns", top_n)),
         "win_rate": round(win_rate, 3),
-        "matches_count": len(top),
-        "matches": top,
+        "matches_count": len(matches),
+        "matches": matches,
         "generated_at": time.time(),
     }
 
 
-def multi_pattern_search(symbols, exchange, interval, pattern_length=60,
-                         forecast_horizon=5, top_n=5, min_signal_threshold=0.0,
+def multi_pattern_search(symbols, exchange, interval, pattern_length=400,
+                         forecast_horizon=15, top_n=10, min_signal_threshold=7,
                          api_key="", api_secret="", testnet=False,
-                         max_workers=3, skip_neutral=True):
+                         max_workers=3, skip_neutral=True, progress_callback=None):
     """
     Запускает поиск по паттернам сразу по нескольким монетам.
     Возвращает таблицу с лучшими сигналами.
     symbols — список строк, например ["BTCUSDT", "ETHUSDT"].
+    progress_callback — функция вида fn(symbol, status, signal=None, result=None, error=None),
+    вызывается после каждой пары.
     """
     results = []
     errors = []
@@ -166,6 +173,8 @@ def multi_pattern_search(symbols, exchange, interval, pattern_length=60,
         symbols = [s.strip() for s in symbols.split(",") if s.strip()]
     for symbol in symbols:
         try:
+            if progress_callback:
+                progress_callback(symbol, "loading")
             res = search_pattern(
                 exchange, symbol, interval,
                 pattern_length=pattern_length,
@@ -179,10 +188,16 @@ def multi_pattern_search(symbols, exchange, interval, pattern_length=60,
             if res.get("ok"):
                 if not (skip_neutral and res.get("signal") == "NEUTRAL"):
                     results.append(res)
+                if progress_callback:
+                    progress_callback(symbol, "done", signal=res.get("signal"), result=res)
             else:
                 errors.append({"symbol": symbol, "error": res.get("error")})
+                if progress_callback:
+                    progress_callback(symbol, "error", error=res.get("error"))
         except Exception as e:
-            errors.append({"symbol": symbol, "error": str(e)})
+            errors.append({"symbol": symbol, "error": _friendly_error(e)})
+            if progress_callback:
+                progress_callback(symbol, "error", error=_friendly_error(e))
 
     # Сортируем: сначала сила, затем потенциальная доходность.
     results.sort(

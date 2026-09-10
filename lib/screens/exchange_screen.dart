@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../app_theme.dart';
 import '../core/core_call.dart';
+import '../widgets/help_button.dart';
 
 class ExchangeScreen extends StatefulWidget {
   const ExchangeScreen({super.key});
@@ -120,6 +121,15 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
                     const Text('Подключение биржи',
                         style: TextStyle(
                             fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    HelpButton(
+                      title: 'Подключение биржи',
+                      text: '1. Выберите биржу.\n'
+                          '2. Введите API Key и API Secret.\n'
+                          '3. Нажмите «Подключить».\n\n'
+                          'Ключи сохраняются только на устройстве (если включена галочка). '
+                          'Рекомендуется использовать тестовые ключи при первом знакомстве.',
+                    ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
                       value: _exchange,

@@ -3,6 +3,7 @@ import '../app_theme.dart';
 import '../core/core_call.dart';
 import '../services/symbols_service.dart';
 import '../widgets/symbol_picker.dart';
+import '../widgets/help_button.dart';
 
 class AssetPricesScreen extends StatefulWidget {
   const AssetPricesScreen({super.key});
@@ -83,6 +84,15 @@ class _AssetPricesScreenState extends State<AssetPricesScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Настройки', style: AppTheme.title()),
+                  const SizedBox(height: 8),
+                  HelpButton(
+                    title: 'Стоимость валют',
+                    text: '1. Выберите базовую монету (например, BTC).\n'
+                        '2. Выберите котировку (USDT, BTC или ETH).\n'
+                        '3. Нажмите «Получить цены».\n\n'
+                        'Программа запросит цены сразу с нескольких бирж и покажет разброс. '
+                        'Если биржа не отвечает, будет написано «Временно данных нет».',
+                  ),
                   const SizedBox(height: 16),
                   SymbolDropdownField(
                     label: 'Монета',

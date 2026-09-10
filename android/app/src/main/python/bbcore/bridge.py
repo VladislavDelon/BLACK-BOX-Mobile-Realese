@@ -3,6 +3,8 @@
 
 import json
 import os
+import threading
+import time
 
 from bbcore import exchange_api
 from bbcore import auth
@@ -265,9 +267,9 @@ def get_all_prices(base: str, quote: str = "USDT"):
         return {"ok": False, "error": str(e)}
 
 
-def search_pattern(exchange: str, symbol: str, interval: str, pattern_length: int = 60,
-                   forecast_horizon: int = 5, top_n: int = 5,
-                   min_signal_threshold: float = 0.0,
+def search_pattern(exchange: str, symbol: str, interval: str, pattern_length: int = 400,
+                   forecast_horizon: int = 15, top_n: int = 10,
+                   min_signal_threshold: float = 7.0,
                    api_key: str = "", api_secret: str = "", testnet: bool = False):
     return analysis.search_pattern(
         exchange, symbol, interval,
@@ -281,9 +283,96 @@ def search_pattern(exchange: str, symbol: str, interval: str, pattern_length: in
     )
 
 
-def multi_pattern_search(symbols, exchange: str, interval: str, pattern_length: int = 60,
-                         forecast_horizon: int = 5, top_n: int = 5,
-                         min_signal_threshold: float = 0.0,
+_analysis_jobs = {}
+
+
+def _progress_callback(job_id, symbol, status, signal=None, result=None, error=None):
+    job = _analysis_jobs.get(job_id)
+    if job is None:
+        return
+    if status == "loading":
+        job["progress"].append({"symbol": symbol, "status": "Загрузка...", "signal": signal})
+    elif status == "done":
+        pct = result.get("forecast_return_pct", 0) if result else 0
+        job["progress"].append({
+            "symbol": symbol,
+            "status": f"{signal} {pct}%",
+            "signal": signal,
+            "pct": pct,
+        })
+        job["results"].append(result)
+    elif status == "error":
+        job["progress"].append({"symbol": symbol, "status": "Временно данных нет", "signal": "ERROR"})
+        job["errors"].append({"symbol": symbol, "error": error or "Временно данных нет"})
+    job["last_update"] = time.time()
+
+
+def start_analysis(symbols, exchange: str, interval: str, pattern_length: int = 400,
+                   forecast_horizon: int = 15, top_n: int = 10,
+                   min_signal_threshold: float = 7.0,
+                   api_key: str = "", api_secret: str = "", testnet: bool = False,
+                   skip_neutral: bool = False, sound_threshold: float = 1.5):
+    job_id = "_active"
+    _analysis_jobs[job_id] = {
+        "status": "running",
+        "progress": [],
+        "results": [],
+        "errors": [],
+        "started_at": time.time(),
+        "last_update": time.time(),
+        "final": None,
+    }
+
+    def run():
+        try:
+            res = analysis.multi_pattern_search(
+                symbols, exchange, interval,
+                pattern_length=pattern_length,
+                forecast_horizon=forecast_horizon,
+                top_n=top_n,
+                min_signal_threshold=min_signal_threshold,
+                api_key=api_key,
+                api_secret=api_secret,
+                testnet=testnet,
+                skip_neutral=skip_neutral,
+                progress_callback=lambda symbol, status, signal=None, result=None, error=None: (
+                    _progress_callback(job_id, symbol, status, signal=signal, result=result, error=error)
+                ),
+            )
+            _analysis_jobs[job_id]["status"] = "done"
+            _analysis_jobs[job_id]["final"] = res
+        except Exception as e:
+            _analysis_jobs[job_id]["status"] = "error"
+            _analysis_jobs[job_id]["error"] = str(e)
+
+    threading.Thread(target=run, daemon=True).start()
+    return {"ok": True, "job_id": job_id}
+
+
+def get_analysis_progress(job_id: str = "_active"):
+    job = _analysis_jobs.get(job_id)
+    if not job:
+        return {"ok": False, "error": "job not found"}
+    return {
+        "ok": True,
+        "status": job["status"],
+        "progress": job["progress"],
+        "results": job["results"],
+        "errors": job["errors"],
+        "final": job["final"],
+    }
+
+
+def cancel_analysis(job_id: str = "_active"):
+    job = _analysis_jobs.get(job_id)
+    if job:
+        job["status"] = "cancelled"
+    return {"ok": True}
+
+
+def multi_pattern_search(symbols, exchange: str, interval: str, pattern_length: int = 400,
+                         forecast_horizon: int = 15, top_n: int = 10,
+                         min_signal_threshold: float = 7.0,
                          api_key: str = "", api_secret: str = "", testnet: bool = False,
                          skip_neutral: bool = True):
     return analysis.multi_pattern_search(
@@ -357,6 +446,9 @@ _METHODS = {
     "get_all_prices": get_all_prices,
     "search_pattern": search_pattern,
     "multi_pattern_search": multi_pattern_search,
+    "start_analysis": start_analysis,
+    "get_analysis_progress": get_analysis_progress,
+    "cancel_analysis": cancel_analysis,
     "run_trading_cycle": run_trading_cycle,
 }
 

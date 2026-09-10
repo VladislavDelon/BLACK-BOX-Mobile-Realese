@@ -4,6 +4,7 @@ import '../app_theme.dart';
 import '../core/core_call.dart';
 import '../services/symbols_service.dart';
 import '../widgets/symbol_picker.dart';
+import '../widgets/help_button.dart';
 
 class MultiPatternSearchScreen extends StatefulWidget {
   const MultiPatternSearchScreen({super.key});
@@ -14,11 +15,11 @@ class MultiPatternSearchScreen extends StatefulWidget {
 
 class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
   List<String> _symbols = ['SOLUSDT', 'BTCUSDT', 'ETHUSDT'];
-  String _interval = '1m';
-  int _patternLength = 600;
-  int _forecastHorizon = 15;
-  int _topN = 16;
-  double _threshold = 12.0;
+  String _interval = '1m (1 минута)';
+  int _patternLength = 400;
+  int _forecastHorizon = 60;
+  int _topN = 10;
+  double _threshold = 7.0;
   double _soundThreshold = 1.5;
   String _exchange = 'Binance Futures';
   bool _skipNeutral = false;
@@ -30,6 +31,9 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
   List<String> _allSymbols = [];
 
   final _intervals = ['1m (1 минута)', '5m (5 минут)', '15m (15 минут)', '30m (30 минут)', '1h (1 час)', '2h (2 часа)', '4h (4 часа)', '1d (1 день)'];
+
+  final List<Map<String, dynamic>> _progressLog = [];
+  final GlobalKey<_ProgressSheetState> _progressSheetKey = GlobalKey();
 
   @override
   void initState() {
@@ -56,55 +60,46 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
       _status = 'Анализ по ${_symbols.length} парам...';
       _results = null;
       _errors = null;
+      _progressLog.clear();
     });
     _openProgressSheet();
     try {
-      final results = <Map<String, dynamic>>[];
-      final errors = <Map<String, dynamic>>[];
-      for (final symbol in _symbols) {
+      await startAnalysisService({
+        'symbols': _symbols,
+        'exchange': _exchange,
+        'interval': _parseInterval(_interval),
+        'pattern_length': _patternLength,
+        'forecast_horizon': _forecastHorizon,
+        'top_n': _topN,
+        'min_signal_threshold': _threshold,
+        'skip_neutral': _skipNeutral,
+      }, soundThreshold: _soundThreshold);
+
+      while (true) {
         if (!mounted) break;
-        _updateProgress(symbol, 'Загрузка...', null);
-        final res = await coreCall('search_pattern', {
-          'exchange': _exchange,
-          'symbol': symbol,
-          'interval': _parseInterval(_interval),
-          'pattern_length': _patternLength,
-          'forecast_horizon': _forecastHorizon,
-          'top_n': _topN,
-          'min_signal_threshold': _threshold,
+        await Future.delayed(const Duration(seconds: 1));
+        final prog = await coreCall('get_analysis_progress');
+        if (prog['ok'] != true) break;
+        final status = prog['status'] as String?;
+        final log = (prog['progress'] as List<dynamic>?)
+            ?.map((e) => Map<String, dynamic>.from(e as Map))
+            .toList() ?? [];
+        if (!mounted) break;
+        setState(() {
+          _progressLog.clear();
+          _progressLog.addAll(log);
         });
-        if (res['ok'] == true) {
-          results.add(res);
-          final forecast = (res['forecast_return_pct'] as num?)?.toDouble() ?? 0.0;
-          if (forecast.abs() >= _soundThreshold) {
-            SystemSound.play(SystemSoundType.alert);
-          }
-          _updateProgress(
-            symbol,
-            '${res['signal']} ${res['forecast_return_pct']}%',
-            res['signal']?.toString() ?? '',
-          );
-        } else {
-          errors.add({'symbol': symbol, 'error': res['error']});
-          _updateProgress(symbol, 'Ошибка: ${res['error']}', 'ERROR');
+        _progressSheetKey.currentState?.refresh();
+        if (status == 'done' || status == 'error' || status == 'cancelled') {
+          final fin = prog['final'] as Map<String, dynamic>?;
+          setState(() {
+            _results = fin?['results'] as List<dynamic>?;
+            _errors = fin?['errors'] as List<dynamic>?;
+            _status = '';
+          });
+          break;
         }
       }
-      results.sort((a, b) {
-        final as_ = (a['strength'] as num?)?.toDouble() ?? 0.0;
-        final bs = (b['strength'] as num?)?.toDouble() ?? 0.0;
-        if (as_ != bs) return bs.compareTo(as_);
-        final af = (a['forecast_return_pct'] as num?)?.toDouble().abs() ?? 0.0;
-        final bf = (b['forecast_return_pct'] as num?)?.toDouble().abs() ?? 0.0;
-        return bf.compareTo(af);
-      });
-      if (_skipNeutral) {
-        results.removeWhere((r) => r['signal'] == 'NEUTRAL');
-      }
-      setState(() {
-        _results = results;
-        _errors = errors;
-        _status = '';
-      });
       if (mounted) {
         Navigator.of(context).pop();
       }
@@ -116,24 +111,7 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
     }
   }
 
-  final List<Map<String, dynamic>> _progressLog = [];
-
-  void _updateProgress(String symbol, String status, String? signal) {
-    setState(() {
-      final idx = _progressLog.indexWhere((e) => e['symbol'] == symbol);
-      if (idx >= 0) {
-        _progressLog[idx] = {'symbol': symbol, 'status': status, 'signal': signal};
-      } else {
-        _progressLog.add({'symbol': symbol, 'status': status, 'signal': signal});
-      }
-    });
-    _progressSheetKey.currentState?.refresh();
-  }
-
-  final GlobalKey<_ProgressSheetState> _progressSheetKey = GlobalKey();
-
   void _openProgressSheet() {
-    _progressLog.clear();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -156,6 +134,16 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Настройки', style: AppTheme.title()),
+                  const SizedBox(height: 8),
+                  HelpButton(
+                    title: 'Мульти поиск по паттернам',
+                    text: '1. Выберите несколько монет.\n'
+                        '2. Оставьте настройки по умолчанию — прогноз на 1 час.\n'
+                        '3. Нажмите «Запустить мульти-поиск».\n\n'
+                        'Программа проанализирует каждую пару и покажет совпавшие сигналы. '
+                        'Звуковой сигнал сработает, если прогноз превысит «Процент срабатывания сигнала». '
+                        '«Пропускать NEUTRAL» скрывает пары без явного LONG/SHORT.',
+                  ),
                   const SizedBox(height: 16),
                   MultiSymbolPicker(
                     selected: _symbols,
@@ -210,12 +198,7 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
               ),
             if (_errors != null && _errors!.isNotEmpty) ...[
               const SizedBox(height: 20),
-              Text('Ошибки:', style: AppTheme.title(color: AppTheme.down)),
-              const SizedBox(height: 12),
-              ..._errors!.map((e) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text('${e['symbol']}: ${e['error']}', style: AppTheme.small(color: AppTheme.down)),
-              )),
+              Text('${_errors!.length} пар временно недоступны', style: AppTheme.small(color: AppTheme.muted)),
             ],
             if (_results != null && _results!.isNotEmpty) ...[
               const SizedBox(height: 20),

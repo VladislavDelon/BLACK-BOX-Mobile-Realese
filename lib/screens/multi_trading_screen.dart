@@ -3,6 +3,7 @@ import '../app_theme.dart';
 import '../core/core_call.dart';
 import '../services/symbols_service.dart';
 import '../widgets/symbol_picker.dart';
+import '../widgets/help_button.dart';
 
 class MultiTradingScreen extends StatefulWidget {
   const MultiTradingScreen({super.key});
@@ -13,11 +14,11 @@ class MultiTradingScreen extends StatefulWidget {
 
 class _MultiTradingScreenState extends State<MultiTradingScreen> {
   List<String> _symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'DOGEUSDT'];
-  String _interval = '15m';
-  int _patternLength = 60;
-  int _forecastHorizon = 5;
-  int _topN = 5;
-  double _minSignalThreshold = 0.0;
+  String _interval = '1m';
+  int _patternLength = 400;
+  int _forecastHorizon = 60;
+  int _topN = 10;
+  double _minSignalThreshold = 7.0;
   double _tradeThreshold = 1.5;
   double _positionSize = 100.0;
   int _leverage = 10;
@@ -132,6 +133,15 @@ class _MultiTradingScreenState extends State<MultiTradingScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Настройки', style: AppTheme.title()),
+                  const SizedBox(height: 8),
+                  HelpButton(
+                    title: 'Мульти торговля',
+                    text: '1. Подключите биржу (меню → Подключение биржи).\n'
+                        '2. Выберите монеты и оставьте настройки по умолчанию — прогноз на 1 час.\n'
+                        '3. Нажмите «Запустить торговый цикл».\n\n'
+                        'Программа проанализирует паттерны и при достижении силы сигнала откроет позицию. '
+                        'Стоп-лосс и тейк-профит настраиваются по режиму.',
+                  ),
                   const SizedBox(height: 16),
                   if (!_hasAccount)
                     Padding(
