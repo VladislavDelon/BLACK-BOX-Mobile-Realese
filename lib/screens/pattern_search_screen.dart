@@ -5,6 +5,8 @@ import '../core/core_call.dart';
 import '../services/symbols_service.dart';
 import '../widgets/symbol_picker.dart';
 import '../widgets/help_button.dart';
+import 'signal_chart_screen.dart';
+import 'signal_movement_screen.dart';
 
 class PatternSearchScreen extends StatefulWidget {
   const PatternSearchScreen({super.key});
@@ -168,6 +170,10 @@ class _PatternSearchScreenState extends State<PatternSearchScreen> {
   Widget _buildResult() {
     final signal = _result!['signal'] ?? '-';
     final strength = _result!['strength'] ?? 0;
+    final strengthMax = _result!['strength_max'] ?? _topN;
+    final windows = _result!['windows'] as Map<String, dynamic>?;
+    final hasWindows = windows != null && windows.isNotEmpty;
+
     final Color signalColor;
     if (signal == 'LONG') {
       signalColor = AppTheme.up;
@@ -192,7 +198,7 @@ class _PatternSearchScreenState extends State<PatternSearchScreen> {
                 children: [
                   Text('Сигнал: ', style: AppTheme.body()),
                   Text(signal, style: AppTheme.title(color: signalColor)),
-                  Text('Сила: $strength/100', style: AppTheme.body()),
+                  Text('Сила: $strength/$strengthMax', style: AppTheme.body()),
                 ],
               ),
               const SizedBox(height: 12),
@@ -202,6 +208,36 @@ class _PatternSearchScreenState extends State<PatternSearchScreen> {
               ),
               const SizedBox(height: 6),
               Text('Win-rate топа: ${_result!['win_rate']}', style: AppTheme.small()),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: hasWindows
+                          ? () => Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => SignalChartScreen(windows: windows),
+                                fullscreenDialog: true,
+                              ))
+                          : null,
+                      icon: const Icon(Icons.candlestick_chart),
+                      label: const Text('График'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: hasWindows
+                          ? () => Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => SignalMovementScreen(windows: windows),
+                                fullscreenDialog: true,
+                              ))
+                          : null,
+                      icon: const Icon(Icons.trending_up),
+                      label: const Text('Движение'),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),

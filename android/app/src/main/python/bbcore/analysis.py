@@ -122,6 +122,7 @@ def search_pattern(exchange, symbol, interval, pattern_length=400,
     current_price = res.get("current_price", 0.0)
     forecast_price = res.get("forecast_price", current_price)
     forecast_return_pct = res.get("forecast_pct_change", 0.0)
+    windows = desktop_analysis.build_signal_windows(res, symbol=symbol)
 
     # win_rate = доля большинства от общего числа найденных паттернов.
     analyses_with_dir = [a for a in analyses if "forecast_direction" in a]
@@ -152,6 +153,7 @@ def search_pattern(exchange, symbol, interval, pattern_length=400,
         "win_rate": round(win_rate, 3),
         "matches_count": len(matches),
         "matches": matches,
+        "windows": windows,
         "generated_at": time.time(),
     }
 

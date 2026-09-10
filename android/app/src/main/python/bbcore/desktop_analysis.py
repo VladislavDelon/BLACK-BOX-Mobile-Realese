@@ -459,6 +459,108 @@ def generate_forecast(current_data, symbol=None, show_plots=True,
     return analyses, top_patterns
 
 
+def _candles_to_list(df, timestamp_key="timestamp"):
+    """Конвертирует DataFrame свечей в JSON-список."""
+    out = []
+    for ts, row in df.iterrows():
+        out.append({
+            timestamp_key: str(ts),
+            "open": float(row["open"]),
+            "high": float(row["high"]),
+            "low": float(row["low"]),
+            "close": float(row["close"]),
+            "volume": float(row["volume"]) if "volume" in df.columns and row["volume"] is not None else 0.0,
+        })
+    return out
+
+
+def build_signal_windows(res, symbol=None):
+    """Формирует JSON-сериализуемые 'График' и 'Движение' окна по результату анализа."""
+    if not res or not res.get("top_patterns"):
+        return {}
+
+    analyses = res.get("analyses", [])
+    top_patterns = res.get("top_patterns", [])
+    current_data = res.get("current_data")
+    symbol = symbol or res.get("symbol", "")
+    signal_type = res.get("signal_type", "flat")
+    strength = res.get("strength", 0)
+    lookback_window = res.get("lookback_window", LOOKBACK_WINDOW)
+    forecast_length = res.get("forecast_length", FORECAST_LENGTH)
+    current_price = res.get("current_price", 0.0)
+    forecast_price = res.get("forecast_price", current_price)
+    avg_pct_change = res.get("forecast_pct_change", 0.0)
+
+    up_count = res.get("long_count", 0)
+    down_count = res.get("short_count", 0)
+    is_long = signal_type == "long"
+
+    # SL/TP (аналог create_summary_window / show_signal)
+    if current_data is not None:
+        try:
+            atr = float(current_data["high"].iloc[-20:].max() - current_data["low"].iloc[-20:].min())
+        except Exception:
+            atr = 0.0
+    else:
+        atr = 0.0
+    if is_long:
+        stop_loss = current_price * (1 - max(1.0, (1.5 * atr / current_price * 100)) / LEVERAGE / 100)
+        take_profit = current_price * (1 + min(5.0, max(1.5, abs(avg_pct_change) * 0.7)) / 100)
+    else:
+        stop_loss = current_price * (1 + max(1.0, (1.5 * atr / current_price * 100)) / LEVERAGE / 100)
+        take_profit = current_price * (1 - min(5.0, max(1.5, abs(avg_pct_change) * 0.7)) / 100)
+
+    # Текущий паттерн
+    current_candles = []
+    if current_data is not None and len(current_data) >= lookback_window:
+        current_candles = _candles_to_list(current_data.iloc[-lookback_window:])
+
+    patterns = []
+    for i, ((similarity, pattern_df, idx), a) in enumerate(zip(top_patterns, analyses)):
+        if a is None:
+            continue
+        hist = pattern_df.iloc[:lookback_window]
+        forecast = pattern_df.iloc[lookback_window:lookback_window + forecast_length]
+        pattern_candles = _candles_to_list(hist) + _candles_to_list(forecast)
+        patterns.append({
+            "index": i,
+            "similarity": float(similarity),
+            "date": str(a.get("start_date", "")),
+            "forecast_pct": float(a.get("forecast_pct_change", 0.0)),
+            "direction": a.get("forecast_direction", ""),
+            "candles": pattern_candles,
+        })
+
+    pct = [a.get("forecast_pct_change", 0) for a in analyses]
+    avg_sim = sum(p[0] for p in top_patterns) / len(top_patterns) if top_patterns else 0
+    avg_vol = sum(a.get("forecast_volatility", 0) for a in analyses) / len(analyses) if analyses else 0
+    best_pct, worst_pct = (max(pct), min(pct)) if pct else (0, 0)
+
+    return {
+        "symbol": symbol,
+        "min_signal_threshold": int(min_signal_threshold),
+        "current_price": float(current_price),
+        "forecast_price": float(forecast_price),
+        "avg_pct_change": float(avg_pct_change),
+        "signal_type": signal_type,
+        "strength": int(strength),
+        "up_count": int(up_count),
+        "down_count": int(down_count),
+        "lookback_window": int(lookback_window),
+        "forecast_length": int(forecast_length),
+        "target": float(forecast_price),
+        "stop_loss": float(stop_loss),
+        "take_profit": float(take_profit),
+        "atr": float(atr),
+        "best_pct": float(best_pct),
+        "worst_pct": float(worst_pct),
+        "avg_sim": float(avg_sim),
+        "avg_vol": float(avg_vol),
+        "current_candles": current_candles,
+        "patterns": patterns,
+    }
+
+
 def run_analysis_job(symbol=None, top_n_patterns=TOP_N_PATTERNS,
                      min_signal_threshold=MIN_SIGNAL_THRESHOLD,
                      show_all_signals=False, check_stop_callback=None,
