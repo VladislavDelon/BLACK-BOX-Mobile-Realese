@@ -222,6 +222,26 @@ class BinanceAPI:
             signed=True,
         )
 
+    def get_positions(self) -> list:
+        """Открытые фьючерсные позиции (positionRisk v2)."""
+        data = self._get("/fapi/v2/positionRisk", signed=True)
+        out = []
+        for p in data if isinstance(data, list) else []:
+            amt = float(p.get("positionAmt", 0) or 0)
+            if amt == 0:
+                continue
+            out.append({
+                "symbol": p.get("symbol", ""),
+                "side": "LONG" if amt > 0 else "SHORT",
+                "qty": abs(amt),
+                "entry_price": float(p.get("entryPrice", 0) or 0),
+                "mark_price": float(p.get("markPrice", 0) or 0),
+                "pnl": float(p.get("unRealizedProfit", 0) or 0),
+                "leverage": int(float(p.get("leverage", 0) or 0)),
+                "liq_price": float(p.get("liquidationPrice", 0) or 0),
+            })
+        return out
+
 
 class MEXCAPI:
     """MEXC Futures API (contract.mexc.com)."""
@@ -489,6 +509,28 @@ class MEXCAPI:
         if take_profit is not None:
             payload["takeProfitPrice"] = self.round_price(mexc, take_profit)
         return self._post("/api/v1/private/order/create", payload, signed=True)
+
+    def get_positions(self) -> list:
+        """Открытые позиции MEXC futures."""
+        data = self._get("/api/v1/private/position/open_positions", signed=True)
+        out = []
+        items = data.get("data", []) if isinstance(data, dict) else []
+        for p in items:
+            hold_vol = float(p.get("holdVol", 0) or 0)
+            if hold_vol <= 0:
+                continue
+            ptype = int(p.get("positionType", 1) or 1)
+            out.append({
+                "symbol": str(p.get("symbol", "")).replace("_", ""),
+                "side": "LONG" if ptype == 1 else "SHORT",
+                "qty": hold_vol,
+                "entry_price": float(p.get("holdAvgPrice") or p.get("openAvgPrice") or 0),
+                "mark_price": float(p.get("fairPrice") or 0),
+                "pnl": float(p.get("profit") or 0),
+                "leverage": int(p.get("leverage", 0) or 0),
+                "liq_price": float(p.get("liquidatePrice", 0) or 0),
+            })
+        return out
 
     def place_stop_order(self, *args, **kwargs) -> dict:
         # TP/SL задаются в основном ордере для MEXC

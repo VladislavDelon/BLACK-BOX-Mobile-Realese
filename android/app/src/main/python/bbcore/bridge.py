@@ -137,6 +137,35 @@ def _write_keys(payload: dict):
         json.dump(payload, f, ensure_ascii=False)
 
 
+def get_account_overview():
+    """Активная (последняя подключённая) биржа: баланс USDT и открытые позиции."""
+    data = load_accounts()
+    accounts = data.get("accounts", [])
+    idx = data.get("active_index", -1)
+    if not (0 <= idx < len(accounts)):
+        return {"ok": False, "error": "Нет подключённой биржи"}
+    acc = accounts[idx]
+    try:
+        api = exchange_api.get_api(
+            acc.get("exchange", ""),
+            acc.get("api_key", ""),
+            acc.get("api_secret", ""),
+            testnet=acc.get("testnet", False),
+        )
+        balance = api.get_balance("USDT")
+        positions = api.get_positions()
+        return {
+            "ok": True,
+            "exchange": acc.get("exchange", ""),
+            "name": acc.get("name") or acc.get("exchange", ""),
+            "testnet": bool(acc.get("testnet")),
+            "balance": balance,
+            "positions": positions,
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e), "exchange": acc.get("exchange", "")}
+
+
 # ----------------------------------------------------------
 # Версия / обновления / авторизация
 # ----------------------------------------------------------
@@ -301,6 +330,8 @@ def _progress_callback(job_id, symbol, status, signal=None, result=None, error=N
             "pct": pct,
         })
         job["results"].append(result)
+    elif status == "cancelled":
+        job["progress"].append({"symbol": symbol, "status": "Остановлено", "signal": "CANCELLED"})
     elif status == "error":
         job["progress"].append({"symbol": symbol, "status": "Временно данных нет", "signal": "ERROR"})
         job["errors"].append({"symbol": symbol, "error": error or "Временно данных нет"})
@@ -321,7 +352,12 @@ def start_analysis(symbols, exchange: str, interval: str, pattern_length: int = 
         "started_at": time.time(),
         "last_update": time.time(),
         "final": None,
+        "cancel_requested": False,
     }
+
+    def _job_cancelled():
+        job = _analysis_jobs.get(job_id)
+        return bool(job and job.get("cancel_requested"))
 
     def run():
         try:
@@ -338,9 +374,11 @@ def start_analysis(symbols, exchange: str, interval: str, pattern_length: int = 
                 progress_callback=lambda symbol, status, signal=None, result=None, error=None: (
                     _progress_callback(job_id, symbol, status, signal=signal, result=result, error=error)
                 ),
+                check_stop_callback=_job_cancelled,
             )
-            _analysis_jobs[job_id]["status"] = "done"
-            _analysis_jobs[job_id]["final"] = res
+            job = _analysis_jobs[job_id]
+            job["final"] = res
+            job["status"] = "cancelled" if job.get("cancel_requested") else "done"
         except Exception as e:
             _analysis_jobs[job_id]["status"] = "error"
             _analysis_jobs[job_id]["error"] = str(e)
@@ -366,6 +404,7 @@ def get_analysis_progress(job_id: str = "_active"):
 def cancel_analysis(job_id: str = "_active"):
     job = _analysis_jobs.get(job_id)
     if job:
+        job["cancel_requested"] = True
         job["status"] = "cancelled"
     return {"ok": True}
 
@@ -432,6 +471,7 @@ _METHODS = {
     "set_active": set_active,
     "get_active": get_active,
     "delete_account": delete_account,
+    "get_account_overview": get_account_overview,
     "get_version": get_version,
     "get_news": get_news,
     "check_update": check_update,

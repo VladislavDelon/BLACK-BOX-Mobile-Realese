@@ -1,5 +1,5 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../app_theme.dart';
 import '../core/core_call.dart';
 import '../services/symbols_service.dart';
@@ -33,12 +33,19 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
   final _intervals = ['1m (1 минута)', '5m (5 минут)', '15m (15 минут)', '30m (30 минут)', '1h (1 час)', '2h (2 часа)', '4h (4 часа)', '1d (1 день)'];
 
   final List<Map<String, dynamic>> _progressLog = [];
-  final GlobalKey<_ProgressSheetState> _progressSheetKey = GlobalKey();
+  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
     _loadSymbols();
+    _attachToJob();
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadSymbols() async {
@@ -50,6 +57,88 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
     return label.split(' ').first;
   }
 
+  /// Подключаемся к уже идущей задаче (если пользователь вернулся на экран)
+  /// или восстанавливаем результаты завершённой.
+  Future<void> _attachToJob() async {
+    Map<String, dynamic> prog;
+    try {
+      prog = await coreCall('get_analysis_progress');
+    } catch (_) {
+      return;
+    }
+    if (!mounted || prog['ok'] != true) return;
+    final status = prog['status'] as String?;
+    final log = (prog['progress'] as List<dynamic>?)
+            ?.map((e) => Map<String, dynamic>.from(e as Map))
+            .toList() ??
+        [];
+    if (status == 'running') {
+      setState(() {
+        _busy = true;
+        _progressLog
+          ..clear()
+          ..addAll(log);
+        _status = 'Анализ идёт в фоне — можно перейти в другой раздел';
+      });
+      _startPolling();
+    } else if (status == 'done' || status == 'error' || status == 'cancelled') {
+      final fin = prog['final'] as Map<String, dynamic>?;
+      setState(() {
+        _progressLog
+          ..clear()
+          ..addAll(log);
+        if (fin != null) {
+          _results = fin['results'] as List<dynamic>?;
+          _errors = fin['errors'] as List<dynamic>?;
+        }
+        if (status == 'cancelled') {
+          _status = 'Анализ остановлен';
+        } else if (status == 'error') {
+          _status = 'Ошибка: ${prog['error'] ?? 'неизвестная'}';
+        }
+      });
+    }
+  }
+
+  void _startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) => _pollOnce());
+  }
+
+  Future<void> _pollOnce() async {
+    Map<String, dynamic> prog;
+    try {
+      prog = await coreCall('get_analysis_progress');
+    } catch (_) {
+      return;
+    }
+    if (!mounted || prog['ok'] != true) return;
+    final status = prog['status'] as String?;
+    final log = (prog['progress'] as List<dynamic>?)
+            ?.map((e) => Map<String, dynamic>.from(e as Map))
+            .toList() ??
+        [];
+    setState(() {
+      _progressLog
+        ..clear()
+        ..addAll(log);
+    });
+    if (status == 'done' || status == 'error' || status == 'cancelled') {
+      _pollTimer?.cancel();
+      final fin = prog['final'] as Map<String, dynamic>?;
+      setState(() {
+        _busy = false;
+        _results = fin?['results'] as List<dynamic>?;
+        _errors = fin?['errors'] as List<dynamic>?;
+        _status = status == 'cancelled'
+            ? 'Анализ остановлен'
+            : status == 'error'
+                ? 'Ошибка: ${prog['error'] ?? 'неизвестная'}'
+                : '';
+      });
+    }
+  }
+
   Future<void> _run() async {
     if (_symbols.isEmpty) {
       setState(() => _status = 'Выберите символы');
@@ -57,12 +146,11 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
     }
     setState(() {
       _busy = true;
-      _status = 'Анализ по ${_symbols.length} парам...';
+      _status = 'Анализ по ${_symbols.length} парам — можно перейти в другой раздел';
       _results = null;
       _errors = null;
       _progressLog.clear();
     });
-    _openProgressSheet();
     try {
       await startAnalysisService({
         'symbols': _symbols,
@@ -74,50 +162,27 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
         'min_signal_threshold': _threshold,
         'skip_neutral': _skipNeutral,
       }, soundThreshold: _soundThreshold);
-
-      while (true) {
-        if (!mounted) break;
-        await Future.delayed(const Duration(seconds: 1));
-        final prog = await coreCall('get_analysis_progress');
-        if (prog['ok'] != true) break;
-        final status = prog['status'] as String?;
-        final log = (prog['progress'] as List<dynamic>?)
-            ?.map((e) => Map<String, dynamic>.from(e as Map))
-            .toList() ?? [];
-        if (!mounted) break;
-        setState(() {
-          _progressLog.clear();
-          _progressLog.addAll(log);
-        });
-        _progressSheetKey.currentState?.refresh();
-        if (status == 'done' || status == 'error' || status == 'cancelled') {
-          final fin = prog['final'] as Map<String, dynamic>?;
-          setState(() {
-            _results = fin?['results'] as List<dynamic>?;
-            _errors = fin?['errors'] as List<dynamic>?;
-            _status = '';
-          });
-          break;
-        }
-      }
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
+      _startPolling();
     } catch (e) {
-      setState(() => _status = 'Ошибка канала: $e');
-      if (mounted) Navigator.of(context).pop();
-    } finally {
-      setState(() => _busy = false);
+      setState(() {
+        _status = 'Ошибка канала: $e';
+        _busy = false;
+      });
     }
   }
 
-  void _openProgressSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppTheme.card,
-      builder: (ctx) => _ProgressSheet(key: _progressSheetKey, log: _progressLog),
-    );
+  Future<void> _stop() async {
+    try {
+      await coreCall('cancel_analysis');
+    } catch (_) {}
+    try {
+      await stopAnalysisService();
+    } catch (_) {}
+    _pollTimer?.cancel();
+    setState(() {
+      _busy = false;
+      _status = 'Анализ остановлен';
+    });
   }
 
   @override
@@ -140,7 +205,9 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
                     text: '1. Выберите несколько монет.\n'
                         '2. Оставьте настройки по умолчанию — прогноз на 1 час.\n'
                         '3. Нажмите «Запустить мульти-поиск».\n\n'
-                        'Программа проанализирует каждую пару и покажет совпавшие сигналы. '
+                        'Анализ работает в фоне: можно перейти в другой раздел, '
+                        'задача продолжится, а прогресс виден в уведомлении. '
+                        'Кнопка «Остановить анализ» прерывает поиск.\n\n'
                         'Звуковой сигнал сработает, если прогноз превысит «Процент срабатывания сигнала». '
                         '«Пропускать NEUTRAL» скрывает пары без явного LONG/SHORT.',
                   ),
@@ -178,15 +245,16 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
                   const SizedBox(height: 20),
                   SizedBox(
                     width: double.infinity,
-                    child: FilledButton(
-                      onPressed: _busy ? null : _run,
-                      child: _busy
-                          ? const SizedBox(
-                              height: 18,
-                              width: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                          : const Text('Запустить мульти-поиск'),
-                    ),
+                    child: _busy
+                        ? FilledButton(
+                            style: FilledButton.styleFrom(backgroundColor: AppTheme.down),
+                            onPressed: _stop,
+                            child: const Text('Остановить анализ'),
+                          )
+                        : FilledButton(
+                            onPressed: _run,
+                            child: const Text('Запустить мульти-поиск'),
+                          ),
                   ),
                 ],
               ),
@@ -194,8 +262,37 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
             if (_status.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Text(_status, style: AppTheme.body(color: AppTheme.down)),
+                child: Text(
+                  _status,
+                  style: AppTheme.body(
+                    color: _status.startsWith('Ошибка') ? AppTheme.down : AppTheme.muted,
+                  ),
+                ),
               ),
+            if (_busy || _progressLog.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _card(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        if (_busy)
+                          const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        if (_busy) const SizedBox(width: 10),
+                        Text('Анализ пар', style: AppTheme.title()),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    ..._progressLog.map((e) => _progressRow(e)),
+                  ],
+                ),
+              ),
+            ],
             if (_errors != null && _errors!.isNotEmpty) ...[
               const SizedBox(height: 20),
               Text('${_errors!.length} пар временно недоступны', style: AppTheme.small(color: AppTheme.muted)),
@@ -212,6 +309,25 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
             const SizedBox(height: 40),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _progressRow(Map<String, dynamic> e) {
+    final signal = e['signal']?.toString() ?? '';
+    Color c = AppTheme.muted;
+    if (signal == 'LONG') c = AppTheme.up;
+    if (signal == 'SHORT') c = AppTheme.down;
+    if (signal == 'ERROR' || signal == 'CANCELLED') c = AppTheme.down;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(e['symbol']?.toString() ?? '', style: AppTheme.body()),
+          ),
+          Text(e['status']?.toString() ?? '', style: AppTheme.small(color: c)),
+        ],
       ),
     );
   }
@@ -301,55 +417,6 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
           final v = double.tryParse(s.replaceAll(',', '.'));
           if (v != null) onChanged(v);
         },
-      ),
-    );
-  }
-}
-
-class _ProgressSheet extends StatefulWidget {
-  final List<Map<String, dynamic>> log;
-  const _ProgressSheet({super.key, required this.log});
-
-  @override
-  State<_ProgressSheet> createState() => _ProgressSheetState();
-}
-
-class _ProgressSheetState extends State<_ProgressSheet> {
-  void refresh() => setState(() {});
-
-  @override
-  Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.6,
-      minChildSize: 0.3,
-      maxChildSize: 0.9,
-      builder: (_, scrollCtrl) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            Text('Анализ пар', style: AppTheme.title()),
-            const SizedBox(height: 16),
-            Expanded(
-              child: ListView.builder(
-                controller: scrollCtrl,
-                itemCount: widget.log.length,
-                itemBuilder: (_, i) {
-                  final e = widget.log[i];
-                  final signal = e['signal']?.toString() ?? '';
-                  Color c = AppTheme.muted;
-                  if (signal == 'LONG') c = AppTheme.up;
-                  if (signal == 'SHORT') c = AppTheme.down;
-                  if (signal == 'ERROR') c = AppTheme.down;
-                  return ListTile(
-                    dense: true,
-                    title: Text(e['symbol']?.toString() ?? '', style: AppTheme.body()),
-                    subtitle: Text(e['status']?.toString() ?? '', style: AppTheme.small(color: c)),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

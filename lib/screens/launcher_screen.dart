@@ -179,8 +179,10 @@ class _LauncherScreenState extends State<LauncherScreen> {
               if (value == 'logout') _logout();
               if (value == 'exchange') _openExchange();
               if (value == 'news') Navigator.pushNamed(context, '/news');
+              if (value == 'account') Navigator.pushNamed(context, '/account');
             },
             itemBuilder: (_) => [
+              const PopupMenuItem(value: 'account', child: Text('Аккаунт')),
               const PopupMenuItem(value: 'exchange', child: Text('Подключение биржи')),
               const PopupMenuItem(value: 'news', child: Text('Новости')),
               const PopupMenuItem(value: 'logout', child: Text('Выйти')),

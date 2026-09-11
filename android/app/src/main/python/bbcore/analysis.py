@@ -96,7 +96,8 @@ def _map_signal(res, min_threshold):
 
 def search_pattern(exchange, symbol, interval, pattern_length=400,
                    forecast_horizon=15, top_n=10, min_signal_threshold=7,
-                   api_key="", api_secret="", testnet=False):
+                   api_key="", api_secret="", testnet=False,
+                   check_stop_callback=None):
     """
     Запускает поиск паттерна, идентичный десктопному.
     Возвращает dict с ok, signal, strength, current_price, matches, forecast.
@@ -107,6 +108,7 @@ def search_pattern(exchange, symbol, interval, pattern_length=400,
             top_n_patterns=top_n,
             min_signal_threshold=min_signal_threshold,
             show_all_signals=True,
+            check_stop_callback=check_stop_callback,
             lookback_window=pattern_length,
             forecast_length=forecast_horizon,
             interval=interval,
@@ -161,19 +163,23 @@ def search_pattern(exchange, symbol, interval, pattern_length=400,
 def multi_pattern_search(symbols, exchange, interval, pattern_length=400,
                          forecast_horizon=15, top_n=10, min_signal_threshold=7,
                          api_key="", api_secret="", testnet=False,
-                         max_workers=3, skip_neutral=True, progress_callback=None):
+                         max_workers=3, skip_neutral=True, progress_callback=None,
+                         check_stop_callback=None):
     """
     Запускает поиск по паттернам сразу по нескольким монетам.
     Возвращает таблицу с лучшими сигналами.
     symbols — список строк, например ["BTCUSDT", "ETHUSDT"].
     progress_callback — функция вида fn(symbol, status, signal=None, result=None, error=None),
     вызывается после каждой пары.
+    check_stop_callback — если вернёт True, цикл останавливается до следующей пары.
     """
     results = []
     errors = []
     if isinstance(symbols, str):
         symbols = [s.strip() for s in symbols.split(",") if s.strip()]
     for symbol in symbols:
+        if check_stop_callback and check_stop_callback():
+            break
         try:
             if progress_callback:
                 progress_callback(symbol, "loading")
@@ -186,7 +192,12 @@ def multi_pattern_search(symbols, exchange, interval, pattern_length=400,
                 api_key=api_key,
                 api_secret=api_secret,
                 testnet=testnet,
+                check_stop_callback=check_stop_callback,
             )
+            if check_stop_callback and check_stop_callback():
+                if progress_callback:
+                    progress_callback(symbol, "cancelled")
+                break
             if res.get("ok"):
                 if not (skip_neutral and res.get("signal") == "NEUTRAL"):
                     results.append(res)
