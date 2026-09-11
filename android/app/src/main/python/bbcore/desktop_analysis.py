@@ -10,9 +10,8 @@ import pandas as pd
 import requests
 
 # === Константы, совпадающие с десктопным config.py ===
-# В десктопе используется spot API. В мобильной версии список символов берётся
-# из Binance USD-M Futures, поэтому свечи запрашиваем с fapi.
-API_URL = "https://fapi.binance.com/fapi/v1/klines"
+# Как на десктопе: свечи — Binance spot, список монет — fapi (там же).
+API_URL = "https://api.binance.com/api/v3/klines"
 DEFAULT_SYMBOL = "SOLUSDT"
 INTERVAL = "1m"
 FORECAST_LENGTH = 60
@@ -46,7 +45,7 @@ def get_stop_flag(symbol):
 # Данные
 # ------------------------------------------------------------
 
-def get_realtime_data(symbol=None, interval=INTERVAL, limit=1500):
+def get_realtime_data(symbol=None, interval=INTERVAL, limit=1000):
     """Возвращает DataFrame OHLC как в десктопной версии (Binance USD-M Futures)."""
     if symbol is None:
         symbol = DEFAULT_SYMBOL
@@ -110,32 +109,55 @@ def cleanup_data():
 # ------------------------------------------------------------
 
 def _find_peaks(values, prominence=0.5):
-    """Возвращает индексы пиков с минимальной prominence.
-    Упрощённая реализация scipy.signal.find_peaks(prominence)."""
-    values = np.asarray(values)
+    """Аналог scipy.signal.find_peaks(x, prominence=p).
+    Плато считается пиком в его середине, проминенция — как в scipy:
+    пик минус максимум из минимумов до ближайшего более высокого пика
+    (или края данных) слева и справа."""
+    values = np.asarray(values, dtype=float)
     n = len(values)
     if n < 3:
         return np.array([])
+
+    # Локальные максимумы (scipy _local_maxima_1d): середина плато
+    midpoints = []
+    left_edges = []
+    right_edges = []
+    i = 0
+    i_max = n - 1
+    while i < i_max:
+        i += 1
+        if values[i - 1] < values[i]:
+            i_ahead = i + 1
+            while i_ahead < i_max and values[i_ahead] == values[i]:
+                i_ahead += 1
+            if values[i_ahead] < values[i]:
+                left_edges.append(i)
+                right_edges.append(i_ahead - 1)
+                midpoints.append((i + i_ahead - 1) // 2)
+                i = i_ahead
+
+    if not midpoints:
+        return np.array([])
+
+    # Проминенция (scipy peak_prominences): расширяем окно влево/вправо,
+    # пока не встретим строго более высокую точку или край данных.
     peaks = []
-    for i in range(1, n - 1):
-        if values[i] > values[i - 1] and values[i] > values[i + 1]:
-            # Локальный максимум; проверяем prominence.
-            left_min = values[i]
-            j = i
-            while j > 0:
-                j -= 1
-                if values[j] > values[i]:
-                    break
-                left_min = min(left_min, values[j])
-            right_min = values[i]
-            j = i
-            while j < n - 1:
-                j += 1
-                if values[j] > values[i]:
-                    break
-                right_min = min(right_min, values[j])
-            if values[i] - max(left_min, right_min) >= prominence:
-                peaks.append(i)
+    for mid, le, re_ in zip(midpoints, left_edges, right_edges):
+        h = values[mid]
+        left_min = h
+        j = le
+        while j >= 0 and values[j] <= h:
+            if values[j] < left_min:
+                left_min = values[j]
+            j -= 1
+        right_min = h
+        j = re_
+        while j < n and values[j] <= h:
+            if values[j] < right_min:
+                right_min = values[j]
+            j += 1
+        if h - max(left_min, right_min) >= prominence:
+            peaks.append(mid)
     return np.array(peaks)
 
 
