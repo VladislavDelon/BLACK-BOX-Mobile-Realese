@@ -10,7 +10,9 @@ import pandas as pd
 import requests
 
 # === Константы, совпадающие с десктопным config.py ===
-API_URL = "https://api.binance.com/api/v3/klines"
+# В десктопе используется spot API. В мобильной версии список символов берётся
+# из Binance USD-M Futures, поэтому свечи запрашиваем с fapi.
+API_URL = "https://fapi.binance.com/fapi/v1/klines"
 DEFAULT_SYMBOL = "SOLUSDT"
 INTERVAL = "1m"
 FORECAST_LENGTH = 60
@@ -44,15 +46,24 @@ def get_stop_flag(symbol):
 # Данные
 # ------------------------------------------------------------
 
-def get_realtime_data(symbol=None, interval=INTERVAL, limit=1000):
-    """Возвращает DataFrame OHLC как в десктопной версии (Binance spot API)."""
+def get_realtime_data(symbol=None, interval=INTERVAL, limit=1500):
+    """Возвращает DataFrame OHLC как в десктопной версии (Binance USD-M Futures)."""
     if symbol is None:
         symbol = DEFAULT_SYMBOL
 
     params = {"symbol": symbol, "interval": interval, "limit": limit}
     response = requests.get(API_URL, params=params, timeout=15)
-    response.raise_for_status()
-    klines = response.json()
+    try:
+        klines = response.json()
+    except Exception:
+        klines = None
+    if response.status_code != 200 or not isinstance(klines, list):
+        msg = ""
+        if isinstance(klines, dict):
+            msg = klines.get("msg", "")
+        raise ValueError(f"Binance klines error {response.status_code}: {msg or response.text}")
+    if not klines:
+        raise ValueError(f"Binance returned empty klines for {symbol}")
 
     df = pd.DataFrame(
         klines,
@@ -464,7 +475,7 @@ def _candles_to_list(df, timestamp_key="timestamp"):
     out = []
     for ts, row in df.iterrows():
         out.append({
-            timestamp_key: str(ts),
+            timestamp_key: ts.isoformat() if hasattr(ts, "isoformat") else str(ts),
             "open": float(row["open"]),
             "high": float(row["high"]),
             "low": float(row["low"]),
@@ -538,7 +549,7 @@ def build_signal_windows(res, symbol=None):
 
     return {
         "symbol": symbol,
-        "min_signal_threshold": int(min_signal_threshold),
+        "min_signal_threshold": int(res.get("min_signal_threshold", MIN_SIGNAL_THRESHOLD)),
         "current_price": float(current_price),
         "forecast_price": float(forecast_price),
         "avg_pct_change": float(avg_pct_change),
