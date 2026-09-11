@@ -19,25 +19,21 @@ class _LauncherScreenState extends State<LauncherScreen> {
     _MenuCard(
       'Поиск по паттернам',
       'Ищет в истории моменты, похожие на текущий график, и показывает, что было дальше.',
-      AppTheme.accent,
       'pattern',
     ),
     _MenuCard(
       'Мульти поиск по паттернам',
       'Тот же поиск сразу по нескольким монетам: цена, прогноз, процент сделки.',
-      AppTheme.accent2,
       'multi_pattern',
     ),
     _MenuCard(
       'Мульти торговля',
       'Автоматическая торговля по сигналам паттернов сразу по нескольким монетам.',
-      AppTheme.accent,
       'multi_trading',
     ),
     _MenuCard(
       'Стоимость валют',
       'Актуальная цена монеты на разных биржах в реальном времени.',
-      AppTheme.accent2,
       'asset_prices',
     ),
   ];
@@ -170,11 +166,11 @@ class _LauncherScreenState extends State<LauncherScreen> {
         title: const Text('BLACK BOX'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.update, color: AppTheme.text),
+            icon: Icon(Icons.update, color: AppTheme.text),
             onPressed: _checkUpdate,
           ),
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: AppTheme.text),
+            icon: Icon(Icons.more_vert, color: AppTheme.text),
             onSelected: (value) {
               if (value == 'logout') _logout();
               if (value == 'exchange') _openExchange();
@@ -212,10 +208,24 @@ class _LauncherScreenState extends State<LauncherScreen> {
             const SizedBox(height: 14),
             ..._cards.map((c) => _buildCard(c)),
             const SizedBox(height: 24),
-            if (_version.isNotEmpty)
-              Center(
-                child: Text('v$_version', style: AppTheme.small()),
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (_version.isNotEmpty)
+                  Text('v$_version', style: AppTheme.small()),
+                if (_version.isNotEmpty)
+                  Text('  ·  ', style: AppTheme.small()),
+                GestureDetector(
+                  onTap: () => Navigator.pushNamed(context, '/logs'),
+                  child: Text(
+                    'Логи',
+                    style: AppTheme.small(color: AppTheme.accent2).copyWith(
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -240,7 +250,7 @@ class _LauncherScreenState extends State<LauncherScreen> {
               width: 6,
               height: 70,
               decoration: BoxDecoration(
-                color: card.color,
+                color: AppTheme.text,
                 borderRadius: BorderRadius.circular(3),
               ),
             ),
@@ -255,7 +265,7 @@ class _LauncherScreenState extends State<LauncherScreen> {
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, color: AppTheme.muted),
+            Icon(Icons.chevron_right, color: AppTheme.muted),
           ],
         ),
       ),
@@ -266,7 +276,6 @@ class _LauncherScreenState extends State<LauncherScreen> {
 class _MenuCard {
   final String title;
   final String desc;
-  final Color color;
   final String id;
-  _MenuCard(this.title, this.desc, this.color, this.id);
+  _MenuCard(this.title, this.desc, this.id);
 }

@@ -104,7 +104,7 @@ class _AssetPricesScreenState extends State<AssetPricesScreen> {
                   DropdownButtonFormField<String>(
                     value: _quote,
                     dropdownColor: AppTheme.card,
-                    style: const TextStyle(color: AppTheme.text),
+                    style: TextStyle(color: AppTheme.text),
                     decoration: const InputDecoration(labelText: 'Котировка'),
                     items: _quotes
                         .map((q) => DropdownMenuItem(value: q, child: Text(q)))

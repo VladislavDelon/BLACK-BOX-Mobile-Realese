@@ -4,7 +4,7 @@
 
 import time
 
-from bbcore import analysis, exchange_api
+from bbcore import analysis, exchange_api, logutil
 
 
 _STOP = False
@@ -130,6 +130,7 @@ def run_trading_cycle(symbols, exchange, api_key, api_secret, testnet=False,
     try:
         api = exchange_api.get_api(exchange, api_key, api_secret, testnet=testnet)
     except Exception as e:
+        logutil.log(f"торговый цикл: не удалось создать API биржи: {e}")
         return {"ok": False, "error": f"Не удалось создать API биржи: {e}"}
 
     try:
@@ -156,6 +157,7 @@ def run_trading_cycle(symbols, exchange, api_key, api_secret, testnet=False,
                 testnet=testnet,
             )
         except Exception as e:
+            logutil.log(f"[{symbol}] торговый цикл: {type(e).__name__}: {e}")
             errors.append({"symbol": symbol, "error": str(e)})
             continue
 
@@ -177,8 +179,10 @@ def run_trading_cycle(symbols, exchange, api_key, api_secret, testnet=False,
             if trade.get("ok"):
                 opened += 1
                 trades.append(trade)
+                logutil.log(f"[{symbol}] открыта сделка {signal} qty={trade.get('qty')} плечо={leverage}x")
             else:
                 errors.append({"symbol": symbol, "error": trade.get("error")})
+                logutil.log(f"[{symbol}] ошибка открытия сделки: {trade.get('error')}")
         else:
             skipped.append({
                 "symbol": symbol,

@@ -74,7 +74,7 @@ class _NewsScreenState extends State<NewsScreen> {
         title: const Text('Новости'),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: AppTheme.accent))
+          ? Center(child: CircularProgressIndicator(color: AppTheme.accent))
           : _error
               ? _buildError()
               : _buildContent(),
@@ -88,7 +88,7 @@ class _NewsScreenState extends State<NewsScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.cloud_off, color: AppTheme.muted, size: 48),
+            Icon(Icons.cloud_off, color: AppTheme.muted, size: 48),
             const SizedBox(height: 16),
             Text('Не удалось загрузить новости', style: AppTheme.title()),
             const SizedBox(height: 8),
@@ -156,7 +156,7 @@ class _NewsScreenState extends State<NewsScreen> {
         Center(
           child: TextButton.icon(
             onPressed: _load,
-            icon: const Icon(Icons.refresh, color: AppTheme.muted),
+            icon: Icon(Icons.refresh, color: AppTheme.muted),
             label: const Text('Обновить'),
           ),
         ),

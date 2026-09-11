@@ -72,7 +72,7 @@ class _AccountScreenState extends State<AccountScreen> {
         title: const Text('Аккаунт'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, color: AppTheme.text),
+            icon: Icon(Icons.refresh, color: AppTheme.text),
             onPressed: _load,
           ),
         ],
@@ -138,6 +138,26 @@ class _AccountScreenState extends State<AccountScreen> {
                                 child: CircularProgressIndicator(strokeWidth: 2),
                               ),
                             ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    _card(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Внешний вид', style: AppTheme.title()),
+                          const SizedBox(height: 8),
+                          ValueListenableBuilder<bool>(
+                            valueListenable: AppTheme.themeNotifier,
+                            builder: (_, light, __) => SwitchListTile(
+                              value: light,
+                              onChanged: (v) => AppTheme.setLight(v),
+                              title: const Text('Светлая тема'),
+                              subtitle: const Text('Переключить оформление приложения'),
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                          ),
                         ],
                       ),
                     ),

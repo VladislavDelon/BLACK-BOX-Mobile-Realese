@@ -12,6 +12,8 @@ import requests
 # === Константы, совпадающие с десктопным config.py ===
 # Как на десктопе: свечи — Binance spot, список монет — fapi (там же).
 API_URL = "https://api.binance.com/api/v3/klines"
+# Фолбэк для пар, которых нет на споте (на десктопе такие пары не анализируются).
+FAPI_URL = "https://fapi.binance.com/fapi/v1/klines"
 DEFAULT_SYMBOL = "SOLUSDT"
 INTERVAL = "1m"
 FORECAST_LENGTH = 60
@@ -45,13 +47,9 @@ def get_stop_flag(symbol):
 # Данные
 # ------------------------------------------------------------
 
-def get_realtime_data(symbol=None, interval=INTERVAL, limit=1000):
-    """Возвращает DataFrame OHLC как в десктопной версии (Binance USD-M Futures)."""
-    if symbol is None:
-        symbol = DEFAULT_SYMBOL
-
+def _fetch_klines(url, symbol, interval, limit):
     params = {"symbol": symbol, "interval": interval, "limit": limit}
-    response = requests.get(API_URL, params=params, timeout=15)
+    response = requests.get(url, params=params, timeout=15)
     try:
         klines = response.json()
     except Exception:
@@ -63,7 +61,43 @@ def get_realtime_data(symbol=None, interval=INTERVAL, limit=1000):
         raise ValueError(f"Binance klines error {response.status_code}: {msg or response.text}")
     if not klines:
         raise ValueError(f"Binance returned empty klines for {symbol}")
+    return klines
 
+
+def get_realtime_data(symbol=None, interval=INTERVAL, limit=1000):
+    """Возвращает DataFrame OHLC как в десктопной версии (Binance spot).
+    Если пары нет на споте или спот недоступен — фолбэк на USD-M Futures."""
+    if symbol is None:
+        symbol = DEFAULT_SYMBOL
+
+    last_err = None
+    klines = None
+    source = "spot"
+    for url, tag in ((API_URL, "spot"), (FAPI_URL, "fapi")):
+        for attempt in range(2):
+            try:
+                klines = _fetch_klines(url, symbol, interval, limit)
+                source = tag
+                break
+            except Exception as e:
+                last_err = e
+                if "invalid symbol" in str(e).lower():
+                    break  # на этом источнике пары нет — сразу следующий источник
+                time.sleep(0.5)
+        if klines is not None:
+            break
+    if klines is None:
+        raise last_err if last_err else ValueError(f"Binance klines failed for {symbol}")
+    if source == "fapi":
+        try:
+            from bbcore import logutil
+            logutil.log(f"{symbol}: spot недоступен ({last_err}), использован фьючерс")
+        except Exception:
+            pass
+    return _klines_to_df(klines)
+
+
+def _klines_to_df(klines):
     df = pd.DataFrame(
         klines,
         columns=[

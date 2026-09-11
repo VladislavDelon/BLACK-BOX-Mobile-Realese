@@ -12,8 +12,8 @@ class HelpButton extends StatelessWidget {
       alignment: Alignment.centerLeft,
       child: TextButton.icon(
         onPressed: () => _show(context),
-        icon: const Icon(Icons.help_outline, color: AppTheme.accent, size: 18),
-        label: const Text('Как пользоваться?', style: TextStyle(color: AppTheme.accent, fontSize: 13)),
+        icon: Icon(Icons.help_outline, color: AppTheme.accent, size: 18),
+        label: Text('Как пользоваться?', style: TextStyle(color: AppTheme.accent, fontSize: 13)),
       ),
     );
   }

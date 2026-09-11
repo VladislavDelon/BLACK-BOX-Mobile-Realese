@@ -134,7 +134,7 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
                     DropdownButtonFormField<String>(
                       value: _exchange,
                       dropdownColor: AppTheme.card,
-                      style: const TextStyle(color: AppTheme.text),
+                      style: TextStyle(color: AppTheme.text),
                       items: _exchanges
                           .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                           .toList(),

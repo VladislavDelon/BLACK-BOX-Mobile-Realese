@@ -164,7 +164,7 @@ class _MultiTradingScreenState extends State<MultiTradingScreen> {
                   DropdownButtonFormField<String>(
                     value: _interval,
                     dropdownColor: AppTheme.card,
-                    style: const TextStyle(color: AppTheme.text),
+                    style: TextStyle(color: AppTheme.text),
                     decoration: const InputDecoration(labelText: 'Интервал'),
                     items: _intervals
                         .map((i) => DropdownMenuItem(value: i, child: Text(i)))
@@ -182,7 +182,7 @@ class _MultiTradingScreenState extends State<MultiTradingScreen> {
                   DropdownButtonFormField<String>(
                     value: _amountMode,
                     dropdownColor: AppTheme.card,
-                    style: const TextStyle(color: AppTheme.text),
+                    style: TextStyle(color: AppTheme.text),
                     decoration: const InputDecoration(labelText: 'Режим суммы'),
                     items: {
                       'fixed': 'Фиксированная сумма',
@@ -201,7 +201,7 @@ class _MultiTradingScreenState extends State<MultiTradingScreen> {
                         child: DropdownButtonFormField<String>(
                           value: _tpMode,
                           dropdownColor: AppTheme.card,
-                          style: const TextStyle(color: AppTheme.text),
+                          style: TextStyle(color: AppTheme.text),
                           decoration: const InputDecoration(labelText: 'TP режим'),
                           items: _tpSlModes
                               .map((m) => DropdownMenuItem(value: m, child: Text(m)))
@@ -222,7 +222,7 @@ class _MultiTradingScreenState extends State<MultiTradingScreen> {
                         child: DropdownButtonFormField<String>(
                           value: _slMode,
                           dropdownColor: AppTheme.card,
-                          style: const TextStyle(color: AppTheme.text),
+                          style: TextStyle(color: AppTheme.text),
                           decoration: const InputDecoration(labelText: 'SL режим'),
                           items: _tpSlModes
                               .map((m) => DropdownMenuItem(value: m, child: Text(m)))
@@ -246,7 +246,7 @@ class _MultiTradingScreenState extends State<MultiTradingScreen> {
                               height: 18,
                               width: 18,
                               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                          : const Text('▶ Запустить торговый цикл'),
+                          : const Text('Запустить торговый цикл'),
                     ),
                   ),
                 ],

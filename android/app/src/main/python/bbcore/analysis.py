@@ -12,6 +12,7 @@ from datetime import datetime
 
 from bbcore import exchange_api
 from bbcore import desktop_analysis
+from bbcore import logutil
 
 INTERVAL_MAP = {
     "1m": 60, "3m": 180, "5m": 300, "15m": 900,
@@ -64,6 +65,12 @@ def _format_time(ms):
 
 def _friendly_error(e):
     err = str(e).lower()
+    if "invalid symbol" in err or "-1121" in err:
+        return "Пара не торгуется на Binance"
+    if "418" in err or "429" in err or "too many" in err:
+        return "Превышен лимит запросов Binance"
+    if "451" in err or "restricted location" in err:
+        return "Binance недоступен в вашем регионе"
     if "timeout" in err:
         return "Таймаут соединения. Проверьте интернет."
     if "name" in err and "resolve" in err:
@@ -116,6 +123,7 @@ def search_pattern(exchange, symbol, interval, pattern_length=400,
         if res is None:
             return {"ok": False, "error": "Не удалось загрузить данные"}
     except Exception as e:
+        logutil.log(f"[{symbol}] анализ: {type(e).__name__}: {e}")
         return {"ok": False, "error": _friendly_error(e)}
 
     signal, strength = _map_signal(res, min_signal_threshold)
@@ -205,9 +213,11 @@ def multi_pattern_search(symbols, exchange, interval, pattern_length=400,
                     progress_callback(symbol, "done", signal=res.get("signal"), result=res)
             else:
                 errors.append({"symbol": symbol, "error": res.get("error")})
+                logutil.log(f"[{symbol}] {res.get('error')}")
                 if progress_callback:
                     progress_callback(symbol, "error", error=res.get("error"))
         except Exception as e:
+            logutil.log(f"[{symbol}] мульти-поиск: {type(e).__name__}: {e}")
             errors.append({"symbol": symbol, "error": _friendly_error(e)})
             if progress_callback:
                 progress_callback(symbol, "error", error=_friendly_error(e))

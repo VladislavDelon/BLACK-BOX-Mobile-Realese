@@ -123,7 +123,7 @@ class _PatternSearchScreenState extends State<PatternSearchScreen> {
                   DropdownButtonFormField<String>(
                     value: _interval,
                     dropdownColor: AppTheme.card,
-                    style: const TextStyle(color: AppTheme.text),
+                    style: TextStyle(color: AppTheme.text),
                     decoration: const InputDecoration(labelText: 'Интервал свечей'),
                     items: _intervals
                         .map((i) => DropdownMenuItem(value: i, child: Text(i)))

@@ -12,6 +12,7 @@ from bbcore import config
 from bbcore import analysis
 from bbcore import auto_trading
 from bbcore import prices
+from bbcore import logutil
 
 # Папка для локальных данных задаётся из Kotlin (filesDir приложения)
 _DATA_DIR = None
@@ -24,7 +25,51 @@ def init(data_dir: str):
     os.environ["FILES_DIR"] = data_dir
     os.makedirs(_DATA_DIR, exist_ok=True)
     auth.init_data_dir(data_dir)
+    logutil.init(data_dir)
+    logutil.log("=== init: ядро запущено ===")
     return {"ok": True, "data_dir": _DATA_DIR}
+
+
+def _log(msg: str):
+    logutil.log(msg)
+
+
+def get_logs():
+    return {"ok": True, "logs": logutil.read_logs()}
+
+
+def clear_logs():
+    logutil.clear_logs()
+    return {"ok": True}
+
+
+def _settings_path() -> str:
+    return os.path.join(_DATA_DIR or ".", "settings.json")
+
+
+def get_setting(key: str, default=None):
+    try:
+        with open(_settings_path(), "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return {"ok": True, "value": data.get(key, default)}
+    except Exception:
+        return {"ok": True, "value": default}
+
+
+def set_setting(key: str, value=None):
+    data = {}
+    try:
+        with open(_settings_path(), "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        pass
+    data[key] = value
+    try:
+        with open(_settings_path(), "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True}
 
 
 def ping():
@@ -333,7 +378,7 @@ def _progress_callback(job_id, symbol, status, signal=None, result=None, error=N
     elif status == "cancelled":
         job["progress"].append({"symbol": symbol, "status": "Остановлено", "signal": "CANCELLED"})
     elif status == "error":
-        job["progress"].append({"symbol": symbol, "status": "Временно данных нет", "signal": "ERROR"})
+        job["progress"].append({"symbol": symbol, "status": error or "Временно данных нет", "signal": "ERROR"})
         job["errors"].append({"symbol": symbol, "error": error or "Временно данных нет"})
     job["last_update"] = time.time()
 
@@ -361,6 +406,7 @@ def start_analysis(symbols, exchange: str, interval: str, pattern_length: int = 
 
     def run():
         try:
+            _log(f"мульти-поиск запущен: {symbols} interval={interval}")
             res = analysis.multi_pattern_search(
                 symbols, exchange, interval,
                 pattern_length=pattern_length,
@@ -379,9 +425,11 @@ def start_analysis(symbols, exchange: str, interval: str, pattern_length: int = 
             job = _analysis_jobs[job_id]
             job["final"] = res
             job["status"] = "cancelled" if job.get("cancel_requested") else "done"
+            _log(f"мульти-поиск завершён: {job['status']}, результатов={len(res.get('results', []))}, ошибок={len(res.get('errors', []))}")
         except Exception as e:
             _analysis_jobs[job_id]["status"] = "error"
             _analysis_jobs[job_id]["error"] = str(e)
+            _log(f"мульти-поиск ошибка: {type(e).__name__}: {e}")
 
     threading.Thread(target=run, daemon=True).start()
     return {"ok": True, "job_id": job_id}
@@ -464,6 +512,10 @@ def run_trading_cycle(symbols, exchange: str, api_key: str, api_secret: str,
 _METHODS = {
     "ping": ping,
     "init": init,
+    "get_logs": get_logs,
+    "clear_logs": clear_logs,
+    "get_setting": get_setting,
+    "set_setting": set_setting,
     "test_exchange": test_exchange,
     "get_balance": get_balance,
     "save_account": save_account,

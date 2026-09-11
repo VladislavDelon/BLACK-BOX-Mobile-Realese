@@ -32,7 +32,7 @@ class _SymbolDropdownFieldState extends State<SymbolDropdownField> {
           labelText: widget.label,
           hintText: 'Нажмите, чтобы выбрать',
           suffixIcon: widget.symbols.isNotEmpty
-              ? const Icon(Icons.arrow_drop_down, color: AppTheme.muted)
+              ? Icon(Icons.arrow_drop_down, color: AppTheme.muted)
               : null,
         ),
         child: Text(
@@ -110,7 +110,7 @@ class __SingleSelectDialogState extends State<_SingleSelectDialog> {
                     dense: true,
                     title: Text(s, style: AppTheme.body()),
                     trailing: isSelected
-                        ? const Icon(Icons.check, color: AppTheme.accent, size: 20)
+                        ? Icon(Icons.check, color: AppTheme.accent, size: 20)
                         : null,
                     onTap: () => Navigator.of(context).pop(s),
                   );
@@ -231,7 +231,7 @@ class _SymbolAutocompleteFieldState extends State<SymbolAutocompleteField> {
             labelText: widget.label,
             hintText: 'Начните вводить BTC, ETH, SOL...',
             suffixIcon: widget.symbols.isNotEmpty
-                ? const Icon(Icons.search, color: AppTheme.muted, size: 20)
+                ? Icon(Icons.search, color: AppTheme.muted, size: 20)
                 : null,
           ),
         );

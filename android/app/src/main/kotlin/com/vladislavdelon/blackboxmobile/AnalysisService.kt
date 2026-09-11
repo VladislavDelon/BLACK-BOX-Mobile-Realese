@@ -20,6 +20,7 @@ class AnalysisService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var running = false
     private var soundThreshold = 1.5
+    private val alerted = mutableSetOf<String>()
 
     companion object {
         const val CHANNEL_ID = "blackbox_analysis"
@@ -38,6 +39,7 @@ class AnalysisService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val args = intent?.getStringExtra(EXTRA_ARGS) ?: "{}"
         soundThreshold = intent?.getDoubleExtra(EXTRA_SOUND_THRESHOLD, 1.5) ?: 1.5
+        alerted.clear()
         startForeground(NOTIFICATION_ID, buildNotification("Запуск анализа..."))
         acquireWakeLock()
         running = true
@@ -78,16 +80,21 @@ class AnalysisService : Service() {
                     val status = obj.getString("status")
                     val progress = obj.getJSONArray("progress")
                     if (progress.length() > 0) {
+                        for (i in 0 until progress.length()) {
+                            val e = progress.getJSONObject(i)
+                            val symbol = e.optString("symbol", "")
+                            val signal = e.optString("signal", "")
+                            val pct = e.optDouble("pct", 0.0)
+                            if ((signal == "LONG" || signal == "SHORT") && pct >= soundThreshold) {
+                                if (alerted.add("$symbol:$signal")) {
+                                    playNotificationSound()
+                                }
+                            }
+                        }
                         val last = progress.getJSONObject(progress.length() - 1)
                         val symbol = last.optString("symbol", "")
                         val st = last.optString("status", "...")
-                        val signal = last.optString("signal", "")
-                        val pct = last.optDouble("pct", 0.0)
                         updateNotification("$symbol: $st")
-
-                        if ((signal == "LONG" || signal == "SHORT") && pct >= soundThreshold) {
-                            playNotificationSound()
-                        }
                     } else {
                         updateNotification("Анализ: подготовка...")
                     }
