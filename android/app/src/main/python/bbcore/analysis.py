@@ -138,6 +138,15 @@ def search_pattern(exchange, symbol, interval, pattern_length=400,
     analyses_with_dir = [a for a in analyses if "forecast_direction" in a]
     win_rate = strength / len(analyses_with_dir) if analyses_with_dir else 0.0
 
+    # Десктопный формат мульти-поиска (multi_pattern_app._make_row):
+    # направление = знак среднего прогноза по ВСЕМ найденным паттернам,
+    # pct = тот же средний прогноз, future = current * (1 + avg/100).
+    avg_pct = 0.0
+    if analyses:
+        avg_pct = sum(float(a.get("forecast_pct_change", 0.0)) for a in analyses) / len(analyses)
+    direction = "LONG" if avg_pct > 0 else ("SHORT" if avg_pct < 0 else "FLAT")
+    future_price = float(current_price) * (1 + avg_pct / 100.0) if current_price else 0.0
+
     matches = []
     for (similarity, pattern, idx), analysis in zip(top_patterns, analyses):
         if not analysis or "forecast_direction" not in analysis:
@@ -160,6 +169,11 @@ def search_pattern(exchange, symbol, interval, pattern_length=400,
         "signal": signal,
         "strength": int(strength),
         "strength_max": int(res.get("top_n_patterns", top_n)),
+        "direction": direction,
+        "avg_pct": round(avg_pct, 3),
+        "future_price": round(future_price, 6),
+        "long_count": int(res.get("long_count", 0)),
+        "short_count": int(res.get("short_count", 0)),
         "win_rate": round(win_rate, 3),
         "matches_count": len(matches),
         "matches": matches,

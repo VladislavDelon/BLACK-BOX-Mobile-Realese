@@ -360,26 +360,43 @@ def search_pattern(exchange: str, symbol: str, interval: str, pattern_length: in
 _analysis_jobs = {}
 
 
+def _upsert_progress(job, symbol, entry):
+    """Одна строка на монету: запись 'Загрузка...' заменяется финальным статусом."""
+    for i, e in enumerate(job["progress"]):
+        if e.get("symbol") == symbol:
+            job["progress"][i] = entry
+            return
+    job["progress"].append(entry)
+
+
 def _progress_callback(job_id, symbol, status, signal=None, result=None, error=None):
     job = _analysis_jobs.get(job_id)
     if job is None:
         return
     if status == "loading":
-        job["progress"].append({"symbol": symbol, "status": "Загрузка...", "signal": signal})
+        _upsert_progress(job, symbol, {"symbol": symbol, "state": "loading", "status": "Загрузка...", "signal": "START"})
     elif status == "done":
-        pct = result.get("forecast_return_pct", 0) if result else 0
-        job["progress"].append({
+        # Десктопный формат строки: "LONG 6/10 +0.85%"
+        direction = (result or {}).get("direction", "FLAT")
+        strength = (result or {}).get("strength", 0)
+        top_n = (result or {}).get("strength_max", 0)
+        pct = (result or {}).get("avg_pct", 0.0)
+        _upsert_progress(job, symbol, {
             "symbol": symbol,
-            "status": f"{signal} {pct}%",
-            "signal": signal,
+            "state": "done",
+            "status": f"{direction} {strength}/{top_n} {pct:+.2f}%",
+            "signal": direction,
             "pct": pct,
+            "strength": strength,
+            "top_n": top_n,
         })
         job["results"].append(result)
     elif status == "cancelled":
-        job["progress"].append({"symbol": symbol, "status": "Остановлено", "signal": "CANCELLED"})
+        _upsert_progress(job, symbol, {"symbol": symbol, "state": "cancelled", "status": "Остановлено", "signal": "CANCELLED"})
     elif status == "error":
-        job["progress"].append({"symbol": symbol, "status": error or "Временно данных нет", "signal": "ERROR"})
-        job["errors"].append({"symbol": symbol, "error": error or "Временно данных нет"})
+        entry = {"symbol": symbol, "state": "error", "status": error or "Временно данных нет", "signal": "ERROR"}
+        _upsert_progress(job, symbol, entry)
+        job["errors"].append({"symbol": symbol, "error": entry["status"]})
     job["last_update"] = time.time()
 
 
@@ -389,8 +406,11 @@ def start_analysis(symbols, exchange: str, interval: str, pattern_length: int = 
                    api_key: str = "", api_secret: str = "", testnet: bool = False,
                    skip_neutral: bool = False, sound_threshold: float = 1.5):
     job_id = "_active"
+    total = len(symbols) if isinstance(symbols, list) else len(
+        [s for s in str(symbols).split(",") if s.strip()])
     _analysis_jobs[job_id] = {
         "status": "running",
+        "total": total,
         "progress": [],
         "results": [],
         "errors": [],

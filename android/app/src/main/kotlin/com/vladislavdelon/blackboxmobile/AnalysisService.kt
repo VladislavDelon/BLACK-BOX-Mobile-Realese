@@ -85,7 +85,7 @@ class AnalysisService : Service() {
                             val symbol = e.optString("symbol", "")
                             val signal = e.optString("signal", "")
                             val pct = e.optDouble("pct", 0.0)
-                            if ((signal == "LONG" || signal == "SHORT") && pct >= soundThreshold) {
+                            if ((signal == "LONG" || signal == "SHORT") && Math.abs(pct) >= soundThreshold) {
                                 if (alerted.add("$symbol:$signal")) {
                                     playNotificationSound()
                                 }

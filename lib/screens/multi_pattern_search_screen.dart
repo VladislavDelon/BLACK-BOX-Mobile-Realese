@@ -34,6 +34,10 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
 
   final List<Map<String, dynamic>> _progressLog = [];
   Timer? _pollTimer;
+  int _jobTotal = 0;
+
+  int get _doneCount =>
+      _progressLog.where((e) => (e['state'] ?? '') != 'loading').length;
 
   @override
   void initState() {
@@ -68,6 +72,7 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
     }
     if (!mounted || prog['ok'] != true) return;
     final status = prog['status'] as String?;
+    _jobTotal = (prog['total'] as num?)?.toInt() ?? _jobTotal;
     final log = (prog['progress'] as List<dynamic>?)
             ?.map((e) => Map<String, dynamic>.from(e as Map))
             .toList() ??
@@ -114,6 +119,7 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
     }
     if (!mounted || prog['ok'] != true) return;
     final status = prog['status'] as String?;
+    _jobTotal = (prog['total'] as num?)?.toInt() ?? _jobTotal;
     final log = (prog['progress'] as List<dynamic>?)
             ?.map((e) => Map<String, dynamic>.from(e as Map))
             .toList() ??
@@ -146,6 +152,7 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
     }
     setState(() {
       _busy = true;
+      _jobTotal = _symbols.length;
       _status = 'Анализ по ${_symbols.length} парам — можно перейти в другой раздел';
       _results = null;
       _errors = null;
@@ -284,7 +291,10 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           ),
                         if (_busy) const SizedBox(width: 10),
-                        Text('Анализ пар', style: AppTheme.title()),
+                        Text(
+                          _jobTotal > 0 ? 'Анализ $_doneCount/$_jobTotal' : 'Анализ пар',
+                          style: AppTheme.title(),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -318,7 +328,8 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
     Color c = AppTheme.muted;
     if (signal == 'LONG') c = AppTheme.up;
     if (signal == 'SHORT') c = AppTheme.down;
-    if (signal == 'ERROR' || signal == 'CANCELLED') c = AppTheme.down;
+    if (signal == 'ERROR') c = AppTheme.down;
+    if (signal == 'CANCELLED' || signal == 'FLAT' || signal == 'START') c = AppTheme.muted;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -368,11 +379,11 @@ class _MultiPatternSearchScreenState extends State<MultiPatternSearchScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            '${r['current_price']} -> ${r['forecast_price']} (${r['forecast_return_pct']}%)',
+            '${r['current_price']} -> ${r['future_price']} (${r['avg_pct']}%)',
             style: AppTheme.body(),
           ),
           const SizedBox(height: 6),
-          Text('Сила: ${r['strength']} / Win-rate: ${r['win_rate']}', style: AppTheme.small()),
+          Text('Сила: ${r['strength']}/${r['strength_max']} | Win-rate: ${r['win_rate']}', style: AppTheme.small()),
         ],
       ),
     );
